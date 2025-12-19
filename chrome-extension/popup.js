@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const refreshDetailsBtn = document.getElementById('refreshDetailsBtn');
     const detailStatus = document.getElementById('detailStatus');
+    const toastContainer = document.getElementById('toastContainer');
 
     const isEmbedded = window.parent !== window;
 
@@ -192,6 +193,34 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!detailStatus) return;
         detailStatus.textContent = msg || '';
         detailStatus.className = `mini-status${type !== 'normal' ? ` ${type}` : ''}`;
+    }
+
+    // Toast notification system
+    function showToast(msg, type = 'success', duration = 3000) {
+        if (!toastContainer) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+
+        const icon = type === 'success' ? '<i class="ri-checkbox-circle-line"></i>' :
+                     type === 'error' ? '<i class="ri-close-circle-line"></i>' :
+                     '<i class="ri-information-line"></i>';
+
+        toast.innerHTML = `
+            <span class="toast-icon">${icon}</span>
+            <span class="toast-message">${msg}</span>
+        `;
+
+        toastContainer.appendChild(toast);
+
+        // Trigger animation
+        setTimeout(() => toast.classList.add('show'), 10);
+
+        // Auto remove after duration
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, duration);
     }
 
     function escapeHtml(str = '') {
@@ -611,8 +640,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 updateUI(currentData);
-                const statusType = successCount === targets.length ? 'success' : (successCount > 0 ? 'normal' : 'error');
-                updateDetailStatus(`VxTwitter 同步完成，成功 ${successCount}/${targets.length} 条。`, statusType);
+                // Clear status and show toast notification
+                updateDetailStatus('');
+                const toastType = successCount === targets.length ? 'success' : (successCount > 0 ? 'success' : 'error');
+                showToast(`VxTwitter 同步完成，成功 ${successCount}/${targets.length} 条`, toastType, 3000);
             });
         } else {
             updateDetailStatus('VxTwitter 请求未能更新任何推文。', 'error');
