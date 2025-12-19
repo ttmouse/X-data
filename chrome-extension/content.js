@@ -305,16 +305,22 @@ function attemptLinkNavigation(tweetId, targetUrl) {
 function monitorNavigationTransition(prevComparable, targetComparable, targetUrl) {
   if (!targetComparable) return;
   if (prevComparable === targetComparable) return;
-  const maxWait = 2000;
+  const maxWait = 5000;
   const interval = 150;
   const start = Date.now();
 
   const check = () => {
     const currentComparable = normalizeUrlForComparison(window.location.href);
-    if (currentComparable === targetComparable) return;
-    if (currentComparable !== prevComparable && currentComparable !== '') return;
+    if (currentComparable === targetComparable) {
+      console.log('X Data Scraper: SPA navigation successful');
+      return;
+    }
+    if (currentComparable !== prevComparable && currentComparable !== '') {
+      console.log('X Data Scraper: Navigation to different page detected');
+      return;
+    }
     if (Date.now() - start >= maxWait) {
-      window.location.assign(targetUrl);
+      console.warn('X Data Scraper: SPA navigation timeout, page may not have loaded');
       return;
     }
     setTimeout(check, interval);
@@ -686,16 +692,20 @@ function isOnAnalyticsPage() {
 // Navigate to analytics page and wait for it to load
 function ensureOnAnalyticsPage(callback) {
   if (isOnAnalyticsPage()) {
+    console.log('X Data Scraper: Already on analytics page');
     callback();
     return;
   }
 
-  console.log('X Data Scraper: Not on analytics page, navigating...');
+  console.log('X Data Scraper: Not on analytics page, navigating via SPA...');
+
+  let navigationCompleted = false;
 
   // Set up a listener for when navigation completes
   const checkInterval = setInterval(() => {
     if (isOnAnalyticsPage()) {
       clearInterval(checkInterval);
+      navigationCompleted = true;
       // Wait a bit more for content to load
       setTimeout(() => {
         console.log('X Data Scraper: Analytics page loaded, ready to scrape');
@@ -704,14 +714,17 @@ function ensureOnAnalyticsPage(callback) {
     }
   }, 500);
 
-  // Navigate to the analytics page
-  navigateWithinPage(null, ANALYTICS_PAGE_URL);
+  // Navigate to the analytics page using SPA navigation
+  const navResult = navigateWithinPage(null, ANALYTICS_PAGE_URL);
+  console.log('X Data Scraper: Navigation initiated:', navResult ? 'success' : 'failed');
 
   // Timeout fallback
   setTimeout(() => {
     clearInterval(checkInterval);
-    if (!isOnAnalyticsPage()) {
-      console.warn('X Data Scraper: Failed to navigate to analytics page');
+    if (!navigationCompleted && !isOnAnalyticsPage()) {
+      console.error('X Data Scraper: Failed to navigate to analytics page within timeout');
+      console.log('X Data Scraper: Current URL:', window.location.href);
+      console.log('X Data Scraper: Target URL:', ANALYTICS_PAGE_URL);
     }
   }, 10000);
 }
@@ -990,11 +1003,10 @@ function showExternalTooltip(payload) {
   }
 
   const actionsHtml = actionLinks.length ? `
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
       ${actionLinks.map(link => `
-        <a href="${link.href}" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:120px;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid #2f3336;color:#f7f9f9;text-decoration:none;font-size:13px;background:rgba(255,255,255,0.03);">
-          <span>${link.icon}</span>
-          <span>${link.label}</span>
+        <a href="${link.href}" target="_blank" rel="noopener noreferrer" title="${link.label}" style="flex:0 0 auto;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:10px;border:1px solid #2f3336;color:#f7f9f9;text-decoration:none;background:rgba(255,255,255,0.03);">
+          ${link.icon}
         </a>
       `).join('')}
     </div>
