@@ -17,69 +17,93 @@
         <span>X Data Scraper</span>
       </div>
       <div class="tabs">
-        <div class="tab" data-tab="console">Console</div>
-        <div class="tab active" data-tab="data">Data</div>
+        <div class="tab active" data-tab="console">Console</div>
+        <div class="tab" data-tab="data">Data</div>
         <div class="tab" data-tab="storage">Storage</div>
       </div>
     </div>
 
     <!-- Console View -->
-    <div id="console-view" class="view">
+    <div id="console-view" class="view active">
       <p class="description">Select a scraping scenario to start collecting data.</p>
 
-      <div class="scenario-selector">
-        <label>Scraping Scenario</label>
-        <div class="scenario-buttons">
-          <button type="button" class="scenario-btn active" data-scenario="analytics_auto">
-            <span class="scenario-btn-title">My Posts</span>
-            <span class="scenario-btn-subtitle">90 days · Auto-scroll</span>
-          </button>
-          <button type="button" class="scenario-btn" data-scenario="bookmarks_auto">
-            <span class="scenario-btn-title">Bookmarks</span>
-            <span class="scenario-btn-subtitle">Saved · Auto-scroll</span>
-          </button>
-          <button type="button" class="scenario-btn" data-scenario="current_auto">
-            <span class="scenario-btn-title">Current</span>
-            <span class="scenario-btn-subtitle">Search/Lists · Auto-scroll</span>
-          </button>
+      <div class="scenario-list glass-card">
+        <div class="card-glow"></div>
+        <div class="scenario-list-header">
+          <h4>Scraping Scenarios</h4>
+          <p>Select a scenario to start collecting data</p>
         </div>
-        <p id="scenarioHint" class="scenario-hint">Navigate to your posts page and scrape your recent 90 days tweets with auto-scroll.</p>
+        <div class="scenario-items-list">
+          <div class="scenario-item" data-scenario="analytics_auto">
+            <div class="scenario-info">
+              <div class="scenario-title">My Posts</div>
+              <div class="scenario-subtitle">
+                <span class="scenario-meta">90 days · Auto-scroll</span>
+                <span class="scenario-data-count" data-scenario-id="analytics_auto">Tweets: <b>0</b> · Images:
+                  <b>0</b></span>
+              </div>
+              <div class="time-range-selector">
+                <button class="time-range-btn" data-days="7">7D</button>
+                <button class="time-range-btn" data-days="14">2W</button>
+                <button class="time-range-btn" data-days="28">4W</button>
+                <button class="time-range-btn active" data-days="90">3M</button>
+              </div>
+            </div>
+            <div class="scenario-actions">
+              <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
+              <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
+            </div>
+          </div>
+          <div class="scenario-item" data-scenario="bookmarks_auto">
+            <div class="scenario-info">
+              <div class="scenario-title">Bookmarks</div>
+              <div class="scenario-subtitle">
+                <span class="scenario-meta">Saved · Auto-scroll</span>
+                <span class="scenario-data-count" data-scenario-id="bookmarks_auto">Tweets: <b>0</b> · Images:
+                  <b>0</b></span>
+              </div>
+            </div>
+            <div class="scenario-actions">
+              <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
+              <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
+            </div>
+          </div>
+          <div class="scenario-item" data-scenario="current_auto">
+            <div class="scenario-info">
+              <div class="scenario-title">Current</div>
+              <div class="scenario-subtitle">
+                <span class="scenario-meta">Search/Lists · Auto-scroll</span>
+                <span class="scenario-data-count" data-scenario-id="current_auto">Tweets: <b>0</b> · Images:
+                  <b>0</b></span>
+              </div>
+            </div>
+            <div class="scenario-actions">
+              <button type="button" class="scenario-action-btn autoscroll-btn" data-action="autoscroll">Scrape</button>
+              <button type="button" class="scenario-action-btn clear-btn" data-action="clear">Clear</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div id="autoScrollNotice" class="auto-scroll-note" style="display: none;"></div>
 
-      <div class="controls">
-        <button id="scrapeBtn" class="primary-btn">Scrape Current View</button>
-        <div class="btn-group" style="margin-top: 8px; display: flex; gap: 8px;">
-          <button id="autoScrollBtn" class="primary-btn" style="background-color: #00ba7c;">Auto-Scroll Scrape</button>
-          <button id="stopBtn" class="primary-btn" style="background-color: #f4212e; display: none;">Stop</button>
-        </div>
-        <div style="margin-top: 8px;">
-          <button id="toggleSidebarBtn" class="primary-btn" style="background-color: #1d9bf0; width: 100%;">Show Sidebar
-            (Embedded)</button>
-        </div>
-      </div>
-
       <div id="status" class="status"></div>
-
-      <div class="stats-simple" id="stats" style="display: none;">
-        <span>Tweets: <b id="tweetCount">0</b></span>
-        <span>Images: <b id="imgCount">0</b></span>
-      </div>
     </div>
 
     <!-- Data View (Table) -->
-    <div id="data-view" class="view active">
+    <div id="data-view" class="view">
       <div class="data-header">
         <div class="search-box">
           <input type="text" id="searchInput" placeholder="Search tweets..." autocomplete="off">
-          <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" aria-label="Clear search" style="display: none;">
+          <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" aria-label="Clear search"
+            style="display: none;">
             <i class="ri-close-line" aria-hidden="true"></i>
           </button>
           <!-- Search History Dropdown -->
           <div id="searchHistoryDropdown" class="search-history-dropdown hidden">
             <div class="search-history-header">
               <span class="history-title">Recent Searches</span>
-              <button id="clearHistoryBtn" class="clear-history-btn" title="Clear history" aria-label="Clear search history">
+              <button id="clearHistoryBtn" class="clear-history-btn" title="Clear history"
+                aria-label="Clear search history">
                 <i class="ri-delete-bin-line"></i>
               </button>
             </div>
@@ -97,7 +121,7 @@
             aria-label="Fetch fresh details via VxTwitter">
             <i class="ri-refresh-line" aria-hidden="true"></i>
           </button>
-          <button id="copyBtn" class="icon-btn" title="Copy JSON" aria-label="Copy JSON">
+          <button id="copyBtn" class="icon-btn" title="Copy Tweet Links" aria-label="Copy Tweet Links">
             <i class="ri-file-copy-line" aria-hidden="true"></i>
           </button>
           <button id="downloadBtn" class="icon-btn" title="Download JSON" aria-label="Download JSON">
@@ -106,7 +130,9 @@
         </div>
       </div>
 
-      <div id="dataScenarioTabs" class="data-scenario-tabs" aria-label="数据分类标签"></div>
+      <div id="dataScenarioTabs" class="data-scenario-tabs" aria-label="Scenario tabs">
+        <!-- Data scenario tabs will be generated by JavaScript -->
+      </div>
 
       <div id="detailStatus" class="mini-status" aria-live="polite"></div>
 
@@ -203,7 +229,8 @@
           </div>
           <div class="info-content">
             <p>Chrome Extension default storage quota is <strong>5MB</strong></p>
-            <p>When storage approaches the limit, data saving may fail. It's recommended to export data regularly and clear cache.</p>
+            <p>When storage approaches the limit, data saving may fail. It's recommended to export data regularly and
+              clear cache.</p>
           </div>
         </div>
       </div>

@@ -17,7 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const detailStatus = document.getElementById('detailStatus');
     const toastContainer = document.getElementById('toastContainer');
     const autoScrollNotice = document.getElementById('autoScrollNotice');
-    const scenarioButtons = Array.from(document.querySelectorAll('.scenario-btn'));
+    const scenarioItems = Array.from(document.querySelectorAll('.scenario-item'));
+    const scenarioActionButtons = Array.from(document.querySelectorAll('.scenario-action-btn'));
+    const scenarioItemsList = document.querySelector('.scenario-items-list');
     const scenarioHint = document.getElementById('scenarioHint');
     const dataScenarioTabs = document.getElementById('dataScenarioTabs');
 
@@ -48,7 +50,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const scrapeBtn = document.getElementById('scrapeBtn');
     const autoScrollBtn = document.getElementById('autoScrollBtn');
-    const stopBtn = document.getElementById('stopBtn');
     const copyBtn = document.getElementById('copyBtn');
     const downloadBtn = document.getElementById('downloadBtn');
     const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
@@ -72,7 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
             id: 'analytics_auto',
             label: 'My Posts',
             statusLabel: 'My Posts',
-            hint: 'Navigate to your posts page and scrape your recent 90 days tweets with auto-scroll.',
+            getTargetUrl: () => `https://x.com/i/account_analytics/content?type=posts&sort=date&dir=desc&days=${myPostsTimeRange}`,
+            hint: 'Navigate to your posts page and scrape your recent tweets with auto-scroll.',
             autoScrollSupported: true
         },
         {
@@ -103,9 +105,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const SCENARIO_STORAGE_KEY = 'x_data_selected_scenario';
     const DATA_CACHE_STORAGE_KEY = 'cached_tweets_by_scenario';
     const LEGACY_CACHE_KEY = 'cached_tweets';
+    const MY_POSTS_TIME_RANGE_KEY = 'x_data_my_posts_time_range';
     const scenarioDataStore = {};
     let activeScenarioId = SCRAPE_SCENARIOS[0].id;
     let activeDataScenarioId = SCRAPE_SCENARIOS[0].id;
+    let myPostsTimeRange = 90; // Default to 3M (90 days)
 
     if (refreshDetailsBtn) refreshDetailsBtn.innerHTML = iconMarkup.refresh;
     if (copyBtn) copyBtn.innerHTML = iconMarkup.copy;
@@ -127,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let tooltipHovering = false;
     let tooltipHideTimeout = null;
     let autoScrollRunning = false;
+    let autoScrollScenarioId = null; // Track which scenario is currently auto-scrolling
 
     function resolveScenarioId(id) {
         if (!id) return SCRAPE_SCENARIOS[0].id;
@@ -152,12 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setActiveScenario(id, { persist = true } = {}) {
         const scenario = getScenarioById(id);
         activeScenarioId = scenario.id;
-        if (scenarioButtons.length) {
-            scenarioButtons.forEach(btn => {
-                const targetId = btn.dataset.scenario;
-                btn.classList.toggle('active', targetId === scenario.id);
-            });
-        }
+        // Scenario items no longer show active state in Console view
         if (scenarioHint) {
             scenarioHint.textContent = scenario.hint;
         }
@@ -171,12 +171,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    if (scenarioButtons.length) {
-        scenarioButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                const scenarioId = button.dataset.scenario;
-                if (scenarioId) {
-                    setActiveScenario(scenarioId);
+    // Scenario items no longer need click handlers for selection
+    // All scenarios are displayed with their data simultaneously
+
+    // Add event listeners to action buttons
+    if (scenarioActionButtons.length) {
+        scenarioActionButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+
+                const scenarioItem = button.closest('.scenario-item');
+                const scenarioId = scenarioItem.dataset.scenario;
+                const action = button.dataset.action;
+
+                if (!scenarioId) return;
+
+                const scenario = getScenarioById(scenarioId);
+
+                switch (action) {
+                    case 'autoscroll':
+                        handleScenarioAutoScroll(scenarioId);
+                        break;
+                    case 'clear':
+                        handleScenarioClear(scenarioId);
+                        break;
                 }
             });
         });
@@ -191,26 +209,103 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             updateAutoScrollControls();
         }
+
+        // Initialize auto-scroll button states
+        updateAutoScrollControls();
     });
 
-    function updateAutoScrollControls() {
-        if (!autoScrollBtn || !stopBtn) return;
-        const scenario = getActiveScenario();
-        const supportsAuto = scenario?.autoScrollSupported !== false;
-        if (supportsAuto) {
-            autoScrollBtn.style.display = autoScrollRunning ? 'none' : 'inline-block';
-            stopBtn.style.display = autoScrollRunning ? 'inline-block' : 'none';
-            if (autoScrollNotice) {
-                autoScrollNotice.style.display = 'none';
-            }
-        } else {
-            autoScrollBtn.style.display = 'none';
-            stopBtn.style.display = 'none';
-            if (autoScrollNotice) {
-                autoScrollNotice.style.display = 'block';
-                autoScrollNotice.textContent = scenario?.autoScrollNote || '该模式仅抓取当前屏幕显示的内容。';
-            }
+    // Note: handleScenarioScrape function has been removed as Scrape buttons are no longer needed
+    // Auto-scroll is now the primary way to collect data
+
+    function handleScenarioAutoScroll(scenarioId) {
+        const scenario = getScenarioById(scenarioId);
+        if (scenario.autoScrollSupported === false) {
+            setStatus('This scenario does not support auto-scrolling.', 'error');
+            return;
         }
+
+        // Check if we need to stop the current auto-scroll
+        if (autoScrollRunning && autoScrollScenarioId === scenarioId) {
+            requestStopAutoScroll();
+            return;
+        }
+
+        // If another scenario is auto-scrolling, stop it first
+        if (autoScrollRunning) {
+            requestStopAutoScroll({ silent: true });
+            // Start the new auto-scroll after a brief delay
+            setTimeout(() => {
+                startAutoScroll(scenarioId);
+            }, 300);
+        } else {
+            startAutoScroll(scenarioId);
+        }
+    }
+
+    function startAutoScroll(scenarioId) {
+        const scenario = getScenarioById(scenarioId);
+        autoScrollRunning = true;
+        autoScrollScenarioId = scenarioId;
+        updateAutoScrollControls();
+        setStatus(`Auto-scrolling ${scenarioStatusLabel(scenario)}...`);
+
+        const targetUrl = scenario.getTargetUrl ? scenario.getTargetUrl() : null;
+        sendMessageToActiveTab({ action: "start_scroll", scenarioId, targetUrl }, (response) => {
+            if (!response || !response.success) {
+                autoScrollRunning = false;
+                autoScrollScenarioId = null;
+                updateAutoScrollControls();
+                const err = response && response.error;
+                if (err === 'auto_scroll_disabled') {
+                    setStatus('Auto-scroll is disabled for this scenario.', 'error');
+                } else {
+                    setStatus('Failed to start auto-scroll. Please refresh and try again.', 'error');
+                }
+            }
+        });
+    }
+
+    function handleScenarioClear(scenarioId) {
+        const scenario = getScenarioById(scenarioId);
+        const data = getScenarioData(scenarioId);
+
+        if (data.length === 0) {
+            showToast(`No data to clear for ${scenario.label}`, 'info', 2000);
+            return;
+        }
+
+        if (confirm(`Are you sure you want to clear all cached data for "${scenario.label}"?`)) {
+            setScenarioData(scenarioId, []);
+            showToast(`Cleared ${scenario.label} cache`, 'success', 2000);
+            sendMessageToActiveTab({ action: "update_cache", scenarioId, data: [] });
+        }
+    }
+
+    function updateAutoScrollControls() {
+        // Update scenario-specific auto-scroll buttons
+        scenarioActionButtons.forEach(button => {
+            const action = button.dataset.action;
+            if (action === 'autoscroll') {
+                const scenarioItem = button.closest('.scenario-item');
+                const scenarioId = scenarioItem.dataset.scenario;
+                const scenario = getScenarioById(scenarioId);
+
+                // Show/stop text based on autoScrollRunning state
+                const isScrollingThisScenario = autoScrollRunning && scenarioId === autoScrollScenarioId;
+                button.textContent = isScrollingThisScenario ? 'Stop' : 'Scrape';
+
+                // Update button appearance
+                if (isScrollingThisScenario) {
+                    button.style.backgroundColor = 'var(--danger)';
+                    button.style.color = 'white';
+                    button.style.borderColor = 'var(--danger)';
+                } else {
+                    button.style.backgroundColor = '';
+                    button.style.color = '';
+                    button.style.borderColor = '';
+                }
+            }
+        });
     }
 
     function computeImageCount(data = []) {
@@ -244,10 +339,6 @@ document.addEventListener('DOMContentLoaded', () => {
         buttons.forEach(button => {
             const scenarioId = button.dataset.scenario;
             button.classList.toggle('active', scenarioId === activeDataScenarioId);
-            const countEl = button.querySelector('.data-scenario-count');
-            if (countEl) {
-                countEl.textContent = getScenarioData(scenarioId).length.toLocaleString();
-            }
         });
     }
 
@@ -312,7 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
             button.dataset.scenario = scenario.id;
             button.innerHTML = `
                 <span class="data-scenario-label">${scenario.label}</span>
-                <span class="data-scenario-count">0</span>
             `;
             button.addEventListener('click', () => {
                 setActiveDataScenario(scenario.id);
@@ -364,20 +454,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function refreshConsoleStatsForScenario(targetScenarioId) {
-        if (!statsDiv) return;
-        const activeConsoleScenarioId = getActiveScenario().id;
-        const effectiveScenarioId = targetScenarioId || activeConsoleScenarioId;
-        if (effectiveScenarioId !== activeConsoleScenarioId) return;
-        const data = getScenarioData(effectiveScenarioId);
-        if (data.length === 0) {
-            tweetCountSpan.textContent = '0';
-            imgCountSpan.textContent = '0';
-            statsDiv.style.display = 'none';
-            return;
+        // Update all scenario data counts in the Console view
+        const dataCountElements = document.querySelectorAll('.scenario-data-count');
+
+        if (targetScenarioId) {
+            // Update specific scenario
+            const targetElement = document.querySelector(`.scenario-data-count[data-scenario-id="${targetScenarioId}"]`);
+            if (targetElement) {
+                const data = getScenarioData(targetScenarioId);
+                const tweetCount = data.length;
+                const imageCount = computeImageCount(data);
+                targetElement.innerHTML = `Tweets: <b>${tweetCount}</b> · Images: <b>${imageCount}</b>`;
+            }
+        } else {
+            // Update all scenarios
+            dataCountElements.forEach(element => {
+                const scenarioId = element.dataset.scenarioId;
+                if (scenarioId) {
+                    const data = getScenarioData(scenarioId);
+                    const tweetCount = data.length;
+                    const imageCount = computeImageCount(data);
+                    element.innerHTML = `Tweets: <b>${tweetCount}</b> · Images: <b>${imageCount}</b>`;
+                }
+            });
         }
-        tweetCountSpan.textContent = data.length;
-        imgCountSpan.textContent = computeImageCount(data);
-        statsDiv.style.display = 'flex';
     }
 
     function bootstrapScenarioDataFromStorage() {
@@ -407,10 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateScenarioStorageList();
             applyCurrentDataFromScenario();
             refreshConsoleStatsForScenario();
-            const hasAnyData = Object.values(scenarioDataStore).some(items => Array.isArray(items) && items.length > 0);
-            if (hasAnyData) {
-                setStatus('Loaded cached data.', 'success');
-            }
+            // Data loaded silently - stats are displayed inline for each scenario
         });
     }
 
@@ -420,10 +517,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         autoScrollRunning = false;
+        const stoppedScenarioId = autoScrollScenarioId;
+        autoScrollScenarioId = null;
         updateAutoScrollControls();
         sendMessageToActiveTab({ action: "stop_scroll" }, (response) => {
             if (response && response.success && Array.isArray(response.data)) {
-                updateUI(response.data, response.scenarioId || activeDataScenarioId);
+                updateUI(response.data, response.scenarioId || stoppedScenarioId || activeDataScenarioId);
             }
             if (!silent) {
                 setStatus('Stopped.', 'success');
@@ -457,6 +556,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderTable(dataToRender);
             } else if (target === 'storage') {
                 updateStorageUI();
+            } else if (target === 'console') {
+                // Update auto-scroll controls for console view
+                updateAutoScrollControls();
+                refreshConsoleStatsForScenario();
             }
         });
     });
@@ -713,20 +816,51 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDataScenarioTabs();
     bootstrapScenarioDataFromStorage();
 
-    if (toggleSidebarBtn) {
-        // If we are already inside the embedded sidebar, hide the toggle button
-        if (window.parent !== window) {
-            toggleSidebarBtn.style.display = 'none';
-        } else {
-            toggleSidebarBtn.addEventListener('click', () => {
-                sendMessageToActiveTab({ action: "toggle_sidebar" }, (response) => {
-                    if (response && response.success) {
-                        toggleSidebarBtn.textContent = response.visible ? 'Hide Sidebar' : 'Show Sidebar (Embedded)';
-                    }
-                });
-            });
+    // Initialize time range selector
+    const timeRangeButtons = document.querySelectorAll('.time-range-btn');
+
+    function updateTimeRangeButtons() {
+        timeRangeButtons.forEach(btn => {
+            const days = parseInt(btn.dataset.days);
+            btn.classList.toggle('active', days === myPostsTimeRange);
+        });
+
+        // Update the scenario meta text
+        const scenarioMeta = document.querySelector('[data-scenario="analytics_auto"] .scenario-meta');
+        if (scenarioMeta) {
+            const daysText = myPostsTimeRange === 7 ? '7 days' :
+                myPostsTimeRange === 14 ? '14 days' :
+                    myPostsTimeRange === 28 ? '28 days' : '90 days';
+            scenarioMeta.textContent = `${daysText} · Auto-scroll`;
         }
     }
+
+    // Load saved time range
+    chrome.storage.local.get([MY_POSTS_TIME_RANGE_KEY], (result) => {
+        if (result[MY_POSTS_TIME_RANGE_KEY]) {
+            myPostsTimeRange = result[MY_POSTS_TIME_RANGE_KEY];
+        }
+        updateTimeRangeButtons();
+    });
+
+    // Handle time range selection
+    timeRangeButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const days = parseInt(button.dataset.days);
+            myPostsTimeRange = days;
+
+            // Save to storage
+            chrome.storage.local.set({ [MY_POSTS_TIME_RANGE_KEY]: days });
+
+            // Update UI
+            updateTimeRangeButtons();
+        });
+    });
+
+    // Note: toggleSidebarBtn has been removed from the UI
+    // If we need to restore it in the future, we can add it back
+    // For now, the sidebar will be always visible when embedded
 
     if (tooltip) {
         tooltip.addEventListener('mouseenter', () => {
@@ -742,9 +876,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function setStatus(msg, type = 'normal') {
+    function setStatus(msg, type = 'normal', autoClear = false) {
         statusDiv.textContent = msg;
         statusDiv.className = 'status ' + type;
+
+        // Auto-clear after delay if requested
+        if (autoClear && msg) {
+            setTimeout(() => {
+                if (statusDiv.textContent === msg) {
+                    statusDiv.textContent = '';
+                    statusDiv.className = 'status';
+                }
+            }, 3000);
+        }
     }
 
     function updateDetailStatus(msg, type = 'normal') {
@@ -761,8 +905,8 @@ document.addEventListener('DOMContentLoaded', () => {
         toast.className = `toast toast-${type}`;
 
         const icon = type === 'success' ? '<i class="ri-checkbox-circle-line"></i>' :
-                     type === 'error' ? '<i class="ri-close-circle-line"></i>' :
-                     '<i class="ri-information-line"></i>';
+            type === 'error' ? '<i class="ri-close-circle-line"></i>' :
+                '<i class="ri-information-line"></i>';
 
         toast.innerHTML = `
             <span class="toast-icon">${icon}</span>
@@ -815,10 +959,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const days = Math.floor(diff / day);
             display = `${days}d ago`;
         } else {
-            display = date.toISOString().slice(0, 10);
+            // Use local date instead of UTC
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const dayOfMonth = String(date.getDate()).padStart(2, '0');
+            display = `${year}-${month}-${dayOfMonth}`;
         }
 
-        const dateLabel = date.toISOString().slice(0, 10);
+        // Use local date for dateLabel to match the tooltip
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const dayOfMonth = String(date.getDate()).padStart(2, '0');
+        const dateLabel = `${year}-${month}-${dayOfMonth}`;
 
         return { display, title: date.toLocaleString(), dateLabel };
     }
@@ -1198,9 +1350,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Merge timestamp - VxTwitter provides precise timestamp
-        const vxTimestamp = parseIsoTimestamp(vxTweet?.created_at || payload.created_at);
+        const vxCreatedAt = vxTweet?.date || vxTweet?.created_at || payload.date || payload.created_at;
+        const vxDateEpoch = vxTweet?.date_epoch || payload.date_epoch;
+
+        console.log(`[VxTwitter] Tweet ${tweet.id}: date="${vxCreatedAt}", date_epoch=${vxDateEpoch}, original="${tweet.timestamp}"`);
+
+        let vxTimestamp = null;
+        if (vxDateEpoch) {
+            // Convert Unix timestamp (seconds) to ISO string
+            vxTimestamp = new Date(vxDateEpoch * 1000).toISOString();
+        } else if (vxCreatedAt) {
+            vxTimestamp = parseIsoTimestamp(vxCreatedAt);
+        }
+
         if (vxTimestamp) {
+            console.log(`[VxTwitter] Tweet ${tweet.id}: Updating timestamp from "${tweet.timestamp}" to "${vxTimestamp}"`);
             merged.timestamp = vxTimestamp;
+        } else {
+            console.warn(`[VxTwitter] Tweet ${tweet.id}: Failed to parse timestamp from date="${vxCreatedAt}", epoch=${vxDateEpoch}`);
         }
 
         // Merge stats - VxTwitter provides accurate engagement metrics
@@ -1307,6 +1474,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tweet = targets[i];
             try {
                 const payload = await fetchVxTwitterDetails(tweet.id);
+                console.log(`[VxTwitter] Response for tweet ${tweet.id}:`, JSON.stringify(payload, null, 2));
                 const merged = mergeTweetWithVxData(tweet, payload);
                 updates.set(tweet.id, merged);
                 successCount++;
@@ -1452,77 +1620,83 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    scrapeBtn.addEventListener('click', () => {
-        const scenario = getActiveScenario();
-        setStatus(`Scraping ${scenarioStatusLabel(scenario)}...`);
-        sendMessageToActiveTab({ action: "scrape", scenarioId: activeScenarioId }, (response) => {
-            if (response && response.success) {
-                updateUI(response.data, response.scenarioId || activeScenarioId);
-                setStatus('Scrape complete!', 'success');
-            } else {
-                setStatus('Error scraping view.', 'error');
-            }
-        });
-    });
-
-    autoScrollBtn.addEventListener('click', () => {
-        const scenario = getActiveScenario();
-        if (scenario.autoScrollSupported === false) {
-            setStatus('该场景仅抓取当前屏幕，不支持自动滚动。', 'error');
-            return;
-        }
-        if (autoScrollRunning) return;
-
-        autoScrollRunning = true;
-        updateAutoScrollControls();
-        setStatus(`Auto-scrolling ${scenarioStatusLabel(scenario)}...`);
-
-        sendMessageToActiveTab({ action: "start_scroll", scenarioId: activeScenarioId }, (response) => {
-            if (!response || !response.success) {
-                autoScrollRunning = false;
-                updateAutoScrollControls();
-                const err = response && response.error;
-                if (err === 'auto_scroll_disabled') {
-                    setStatus('该场景禁用了自动滚动，仅抓取当前屏。', 'error');
-                } else {
-                    setStatus('启动自动滚动失败，请刷新页面后重试。', 'error');
-                }
-            }
-        });
-    });
-
-    stopBtn.addEventListener('click', () => {
-        requestStopAutoScroll();
-    });
+    // Note: Global stop button has been removed - stop functionality is now integrated into scenario buttons
+    // The Auto-Scroll button will transform into a Stop button when auto-scroll is active
 
     // Handle updates during auto-scroll
     chrome.runtime.onMessage.addListener((request) => {
         if (request.action === "update_count") {
-            if (!request.scenarioId || request.scenarioId === getActiveScenario().id) {
-                tweetCountSpan.textContent = request.count;
-                statsDiv.style.display = 'flex';
+            // Update the inline data count for the specific scenario
+            const scenarioId = request.scenarioId;
+            if (scenarioId) {
+                // Update the scenario's inline data count
+                refreshConsoleStatsForScenario(scenarioId);
+
+                // Also update the status message to show progress
+                const scenario = getScenarioById(scenarioId);
+                setStatus(`Scraping ${scenario.label}... ${request.count} tweets found`, 'success');
             }
         } else if (request.action === "scroll_finished") {
             autoScrollRunning = false;
+            autoScrollScenarioId = null;
             updateAutoScrollControls();
             if (Array.isArray(request.data)) {
                 updateUI(request.data, request.scenarioId || activeDataScenarioId);
             }
-            setStatus('Auto-scroll finished.', 'success');
+            setStatus('Auto-scroll finished.', 'success', true); // Auto-clear after 3s
         }
     });
 
     copyBtn.addEventListener('click', () => {
-        const text = JSON.stringify(currentData, null, 2);
-        navigator.clipboard.writeText(text).then(() => {
-            if (!copyBtn) return;
-            copyBtn.innerHTML = iconMarkup.copySuccess;
-            setTimeout(() => {
-                if (copyBtn) copyBtn.innerHTML = iconMarkup.copy;
-            }, 2000);
-        }).catch((err) => {
-            console.error('X Data Scraper: Failed to copy JSON', err);
-        });
+        // Only copy tweet links from the currently active data scenario
+        const activeData = getScenarioData(activeDataScenarioId);
+
+        if (!activeData || activeData.length === 0) {
+            showToast('没有可复制的推文链接', 'info', 2000);
+            return;
+        }
+
+        const tweetLinks = activeData.map(tweet => {
+            const url = resolveTweetUrl(tweet);
+            return url || `https://x.com/i/web/status/${tweet.id}`;
+        }).filter(url => url); // Filter out any null URLs
+
+        if (tweetLinks.length === 0) {
+            showToast('没有有效的推文链接', 'info', 2000);
+            return;
+        }
+
+        // Create text with each link on a new line
+        const text = tweetLinks.join('\n');
+
+        // Use fallback method for popup pages where Clipboard API may be blocked
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        try {
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            if (success) {
+                if (copyBtn) {
+                    copyBtn.innerHTML = iconMarkup.copySuccess;
+                    setTimeout(() => {
+                        if (copyBtn) copyBtn.innerHTML = iconMarkup.copy;
+                    }, 2000);
+                }
+                showToast(`已复制 ${tweetLinks.length} 条推文链接`, 'success', 2000);
+            } else {
+                showToast('复制失败，请重试', 'error', 2000);
+            }
+        } catch (err) {
+            document.body.removeChild(textarea);
+            console.error('X Data Scraper: Failed to copy tweet links', err);
+            showToast(`复制失败: ${err.message}`, 'error', 3000);
+        }
     });
 
     downloadBtn.addEventListener('click', () => {

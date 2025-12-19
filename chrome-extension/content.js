@@ -776,6 +776,15 @@ async function autoScrollLoop(targetScenarioId = activeCacheScenarioId) {
       count: allTweetsMap.size
     });
 
+    // On first iteration, don't scroll yet - just scrape what's visible
+    // This gives users immediate feedback and allows them to see initial results
+    if (noChangeCount === 0 && allTweetsMap.size > 0) {
+      console.log(`X Data Scraper: Initial scrape complete. Found ${allTweetsMap.size} tweets. Starting scroll...`);
+      noChangeCount++; // Move to next iteration
+      await new Promise(r => setTimeout(r, 1500)); // Brief pause to show initial results
+      continue; // Skip scrolling on first iteration
+    }
+
     // Scroll
     // Use smooth scrolling. Increased step size for faster traversal.
     const scrollAmount = 1200;
@@ -913,8 +922,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return false;
       }
       const scenarioId = scenario.id;
+      const targetUrl = request.targetUrl || scenario.targetUrl; // Use dynamic URL if provided
       switchScenarioCache(scenarioId);
-      ensureOnScenarioPage(scenario, () => {
+      ensureOnScenarioPage({ ...scenario, targetUrl }, () => {
         // Keep existing data - incremental scraping
         console.log(`X Data Scraper: Starting auto-scroll (${scenario.label || scenario.id}) with ${allTweetsMap.size} existing tweets`);
         autoScrollLoop(scenarioId).then(data => {

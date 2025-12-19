@@ -130,7 +130,7 @@ body {
   padding: 12px 12px 8px 12px;
   background: var(--bg-color);
   border-bottom: 1px solid var(--border);
-  z-index: 10;
+  z-index: 30;
 }
 
 .data-scenario-tabs {
@@ -139,7 +139,9 @@ body {
   padding: 10px 12px;
   background: var(--bg-color);
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
+  position: relative;
+  z-index: 5;
+  flex-wrap: wrap;
 }
 
 .data-scenario-tab {
@@ -248,6 +250,162 @@ body {
   line-height: 1.5;
 }
 
+/* Scenario List Styles - Matching Storage page */
+.scenario-list {
+  margin-top: 12px;
+  padding: 16px;
+}
+
+.scenario-list-header h4 {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.scenario-list-header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.scenario-items-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scenario-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s ease;
+}
+
+.scenario-item:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.scenario-item.active {
+  border-color: var(--accent);
+  background: rgba(29, 155, 240, 0.1);
+}
+
+.scenario-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.scenario-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-main);
+}
+
+.scenario-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scenario-meta {
+  color: var(--text-dim);
+}
+
+.scenario-data-count {
+  color: var(--text-main);
+  font-size: 11px;
+}
+
+.scenario-data-count b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.scenario-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Single scenario actions in separate views */
+.single-scenario-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.scenario-action-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-main);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.scenario-action-btn:hover {
+  border-color: var(--accent);
+}
+
+.scenario-action-btn.scrape-btn:hover {
+  background-color: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.scenario-action-btn.autoscroll-btn:hover {
+  background-color: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
+.scenario-action-btn.clear-btn:hover {
+  background-color: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+
+.time-range-selector {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.time-range-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.time-range-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-main);
+}
+
+.time-range-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
 .auto-scroll-note {
   font-size: 12px;
   color: var(--danger);
@@ -291,6 +449,7 @@ body {
 .status {
   padding: 10px;
   border-radius: 8px;
+  margin-top: 16px;
   margin-bottom: 16px;
   font-size: 13px;
 }
@@ -593,6 +752,7 @@ body {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -1105,12 +1265,16 @@ tr:hover {
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(0, 0) scale(1);
   }
+
   33% {
     transform: translate(30px, -30px) scale(1.1);
   }
+
   66% {
     transform: translate(-20px, 20px) scale(0.9);
   }
@@ -1190,11 +1354,9 @@ tr:hover {
   position: absolute;
   inset: 0;
   opacity: 0;
-  background: radial-gradient(
-    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    rgba(94, 106, 210, 0.1),
-    transparent 40%
-  );
+  background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(94, 106, 210, 0.1),
+      transparent 40%);
   transition: opacity 0.3s;
   pointer-events: none;
 }

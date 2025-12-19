@@ -6,7 +6,8 @@
     "permissions": [
         "activeTab",
         "scripting",
-        "storage"
+        "storage",
+        "clipboardWrite"
     ],
     "host_permissions": [
         "https://api.vxtwitter.com/*"
