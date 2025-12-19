@@ -19,12 +19,37 @@
       <div class="tabs">
         <div class="tab" data-tab="console">Console</div>
         <div class="tab active" data-tab="data">Data</div>
+        <div class="tab" data-tab="storage">Storage</div>
       </div>
     </div>
 
     <!-- Console View -->
     <div id="console-view" class="view">
       <p class="description">Scrape tweets from the current page auto-scrolling.</p>
+
+      <div class="scenario-selector">
+        <label>选择抓取场景</label>
+        <div class="scenario-buttons">
+          <button type="button" class="scenario-btn active" data-scenario="analytics_auto">
+            <span class="scenario-btn-title">内容分析</span>
+            <span class="scenario-btn-subtitle">自动滚动</span>
+          </button>
+          <button type="button" class="scenario-btn" data-scenario="bookmarks_auto">
+            <span class="scenario-btn-title">收藏夹</span>
+            <span class="scenario-btn-subtitle">自动滚动</span>
+          </button>
+          <button type="button" class="scenario-btn" data-scenario="current_auto">
+            <span class="scenario-btn-title">当前页面</span>
+            <span class="scenario-btn-subtitle">搜索/列表 · 自动滚动</span>
+          </button>
+          <button type="button" class="scenario-btn" data-scenario="current_single">
+            <span class="scenario-btn-title">当前页面</span>
+            <span class="scenario-btn-subtitle">第一屏 · 不滚动</span>
+          </button>
+        </div>
+        <p id="scenarioHint" class="scenario-hint">自动跳转到创作者内容分析 &gt; 内容列表，并滚动抓取最近 90 天的数据。</p>
+      </div>
+      <div id="autoScrollNotice" class="auto-scroll-note" style="display: none;"></div>
 
       <div class="controls">
         <button id="scrapeBtn" class="primary-btn">Scrape Current View</button>
@@ -50,10 +75,26 @@
     <div id="data-view" class="view active">
       <div class="data-header">
         <div class="search-box">
-          <input type="text" id="searchInput" placeholder="Search tweets...">
+          <input type="text" id="searchInput" placeholder="Search tweets..." autocomplete="off">
           <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" aria-label="Clear search" style="display: none;">
             <i class="ri-close-line" aria-hidden="true"></i>
           </button>
+          <!-- Search History Dropdown -->
+          <div id="searchHistoryDropdown" class="search-history-dropdown hidden">
+            <div class="search-history-header">
+              <span class="history-title">Recent Searches</span>
+              <button id="clearHistoryBtn" class="clear-history-btn" title="Clear history" aria-label="Clear search history">
+                <i class="ri-delete-bin-line"></i>
+              </button>
+            </div>
+            <div id="searchHistoryList" class="search-history-list">
+              <!-- History items will be inserted here -->
+            </div>
+            <div class="search-history-empty" style="display: none;">
+              <i class="ri-history-line"></i>
+              <span>No search history</span>
+            </div>
+          </div>
         </div>
         <div class="data-actions">
           <button id="refreshDetailsBtn" class="icon-btn" title="Fetch fresh details via VxTwitter"
@@ -68,6 +109,8 @@
           </button>
         </div>
       </div>
+
+      <div id="dataScenarioTabs" class="data-scenario-tabs" aria-label="数据分类标签"></div>
 
       <div id="detailStatus" class="mini-status" aria-live="polite"></div>
 
@@ -97,6 +140,85 @@
               <!-- Data rows injected here -->
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Storage View -->
+    <div id="storage-view" class="view">
+      <!-- Animated background blobs -->
+      <div class="storage-bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+      </div>
+
+      <div class="storage-overview">
+        <div class="storage-header">
+          <h3 class="storage-title">存储使用情况</h3>
+          <p class="storage-subtitle">管理您的数据缓存和存储配额</p>
+        </div>
+
+        <div class="storage-metric glass-card">
+          <div class="card-glow"></div>
+          <div class="metric-header">
+            <span class="metric-label">已用空间</span>
+            <span class="metric-value" id="storageUsed">-</span>
+          </div>
+          <div class="storage-bar-container">
+            <div class="storage-bar">
+              <div class="storage-bar-fill" id="storageBarFill" style="width: 0%">
+                <div class="bar-shine"></div>
+              </div>
+            </div>
+          </div>
+          <div class="metric-footer">
+            <span id="storageQuota">配额: -</span>
+            <span id="storagePercent">0%</span>
+          </div>
+        </div>
+
+        <div class="storage-stats">
+          <div class="stat-item glass-card">
+            <div class="card-glow"></div>
+            <i class="ri-file-list-3-line stat-icon"></i>
+            <span class="stat-label">推文数量</span>
+            <span class="stat-value" id="storageTweetCount">0</span>
+          </div>
+          <div class="stat-item glass-card">
+            <div class="card-glow"></div>
+            <i class="ri-dashboard-line stat-icon"></i>
+            <span class="stat-label">平均单条大小</span>
+            <span class="stat-value" id="storageAvgSize">-</span>
+          </div>
+          <div class="stat-item glass-card">
+            <div class="card-glow"></div>
+            <i class="ri-time-line stat-icon"></i>
+            <span class="stat-label">最后更新</span>
+            <span class="stat-value" id="storageLastUpdate">-</span>
+          </div>
+        </div>
+
+        <div class="storage-actions">
+          <button id="refreshStorageBtn" class="storage-btn btn-secondary">
+            <i class="ri-refresh-line"></i>
+            <span>刷新统计</span>
+          </button>
+          <button id="clearStorageBtn" class="storage-btn btn-danger">
+            <i class="ri-delete-bin-line"></i>
+            <span>清空缓存</span>
+          </button>
+        </div>
+
+        <div class="storage-info glass-card">
+          <div class="card-glow"></div>
+          <div class="info-icon">
+            <i class="ri-information-line"></i>
+          </div>
+          <div class="info-content">
+            <p>Chrome扩展默认存储配额为 <strong>5MB</strong></p>
+            <p>当存储接近上限时，可能会导致数据保存失败。建议定期导出数据并清空缓存。</p>
+          </div>
         </div>
       </div>
     </div>

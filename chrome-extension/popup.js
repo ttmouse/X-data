@@ -9,9 +9,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const tooltip = document.getElementById('tweetTooltip');
     const searchInput = document.getElementById('searchInput');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const searchHistoryDropdown = document.getElementById('searchHistoryDropdown');
+    const searchHistoryList = document.getElementById('searchHistoryList');
+    const searchHistoryEmpty = document.querySelector('.search-history-empty');
+    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
     const refreshDetailsBtn = document.getElementById('refreshDetailsBtn');
     const detailStatus = document.getElementById('detailStatus');
     const toastContainer = document.getElementById('toastContainer');
+    const autoScrollNotice = document.getElementById('autoScrollNotice');
+    const scenarioButtons = Array.from(document.querySelectorAll('.scenario-btn'));
+    const scenarioHint = document.getElementById('scenarioHint');
+    const dataScenarioTabs = document.getElementById('dataScenarioTabs');
+
+    // Storage view elements
+    const storageUsedSpan = document.getElementById('storageUsed');
+    const storageQuotaSpan = document.getElementById('storageQuota');
+    const storagePercentSpan = document.getElementById('storagePercent');
+    const storageBarFill = document.getElementById('storageBarFill');
+    const storageTweetCountSpan = document.getElementById('storageTweetCount');
+    const storageAvgSizeSpan = document.getElementById('storageAvgSize');
+    const storageLastUpdateSpan = document.getElementById('storageLastUpdate');
+    const refreshStorageBtn = document.getElementById('refreshStorageBtn');
+    const clearStorageBtn = document.getElementById('clearStorageBtn');
 
     const isEmbedded = window.parent !== window;
 
@@ -31,10 +50,58 @@ document.addEventListener('DOMContentLoaded', () => {
         videoPlaceholder: '<i class="ri-movie-2-line" aria-hidden="true"></i>',
         imagePlaceholder: '<i class="ri-image-line" aria-hidden="true"></i>',
         reply: '<i class="ri-chat-1-line" aria-hidden="true"></i>',
-        retweet: '<i class="ri-repeat-2-line" aria-hidden="true"></i>',
+        retweet: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"></path></svg>',
         like: '<i class="ri-heart-3-line" aria-hidden="true"></i>',
         open: '<i class="ri-external-link-line" aria-hidden="true"></i>'
     };
+
+    const SCRAPE_SCENARIOS = [
+        {
+            id: 'analytics_auto',
+            label: '内容分析列表',
+            statusLabel: '内容分析列表（自动滚动）',
+            hint: '自动跳转到 https://x.com/i/account_analytics/content 并滚动抓取最近 90 天的数据。',
+            autoScrollSupported: true
+        },
+        {
+            id: 'bookmarks_auto',
+            label: '收藏夹',
+            statusLabel: '收藏夹（自动滚动）',
+            hint: '自动跳转到 https://x.com/i/bookmarks 并持续滚动抓取你保存的推文。',
+            autoScrollSupported: true
+        },
+        {
+            id: 'current_auto',
+            label: '当前页面（自动滚动）',
+            statusLabel: '当前页面（自动滚动）',
+            hint: '停留在当前打开的页面（包括搜索、列表、标签等）并自动滚动抓取更多内容。',
+            autoScrollSupported: true
+        },
+        {
+            id: 'current_single',
+            label: '当前页面（第一屏）',
+            statusLabel: '当前页面（第一屏）',
+            hint: '留在当前页面，只抓取第一屏可见内容，不触发自动滚动。',
+            autoScrollSupported: false,
+            autoScrollNote: '该模式仅抓取当前屏幕显示的内容，自动滚动按钮已禁用。'
+        }
+    ];
+    const SCENARIO_ALIAS_MAP = {
+        analytics: 'analytics_auto',
+        bookmarks: 'bookmarks_auto',
+        lists: 'current_auto',
+        search: 'current_auto'
+    };
+    const scenarioLookup = SCRAPE_SCENARIOS.reduce((acc, scenario) => {
+        acc[scenario.id] = scenario;
+        return acc;
+    }, {});
+    const SCENARIO_STORAGE_KEY = 'x_data_selected_scenario';
+    const DATA_CACHE_STORAGE_KEY = 'cached_tweets_by_scenario';
+    const LEGACY_CACHE_KEY = 'cached_tweets';
+    const scenarioDataStore = {};
+    let activeScenarioId = SCRAPE_SCENARIOS[0].id;
+    let activeDataScenarioId = SCRAPE_SCENARIOS[0].id;
 
     if (refreshDetailsBtn) refreshDetailsBtn.innerHTML = iconMarkup.refresh;
     if (copyBtn) copyBtn.innerHTML = iconMarkup.copy;
@@ -55,6 +122,257 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeRowHovering = false;
     let tooltipHovering = false;
     let tooltipHideTimeout = null;
+    let autoScrollRunning = false;
+
+    function resolveScenarioId(id) {
+        if (!id) return SCRAPE_SCENARIOS[0].id;
+        if (scenarioLookup[id]) return id;
+        const alias = id && SCENARIO_ALIAS_MAP[id];
+        if (alias && scenarioLookup[alias]) return alias;
+        return SCRAPE_SCENARIOS[0].id;
+    }
+
+    function getScenarioById(id) {
+        return scenarioLookup[resolveScenarioId(id)] || SCRAPE_SCENARIOS[0];
+    }
+
+    function getActiveScenario() {
+        return getScenarioById(activeScenarioId);
+    }
+
+    function scenarioStatusLabel(scenario) {
+        if (!scenario) return '';
+        return scenario.statusLabel || scenario.label || '';
+    }
+
+    function setActiveScenario(id, { persist = true } = {}) {
+        const scenario = getScenarioById(id);
+        activeScenarioId = scenario.id;
+        if (scenarioButtons.length) {
+            scenarioButtons.forEach(btn => {
+                const targetId = btn.dataset.scenario;
+                btn.classList.toggle('active', targetId === scenario.id);
+            });
+        }
+        if (scenarioHint) {
+            scenarioHint.textContent = scenario.hint;
+        }
+        if (scenario.autoScrollSupported === false && autoScrollRunning) {
+            requestStopAutoScroll({ silent: true });
+        }
+        updateAutoScrollControls();
+        refreshConsoleStatsForScenario(scenario.id);
+        if (persist) {
+            chrome.storage.local.set({ [SCENARIO_STORAGE_KEY]: activeScenarioId });
+        }
+    }
+
+    if (scenarioButtons.length) {
+        scenarioButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const scenarioId = button.dataset.scenario;
+                if (scenarioId) {
+                    setActiveScenario(scenarioId);
+                }
+            });
+        });
+    }
+
+    setActiveScenario(activeScenarioId, { persist: false });
+
+    chrome.storage.local.get([SCENARIO_STORAGE_KEY], (result) => {
+        const stored = result[SCENARIO_STORAGE_KEY];
+        if (stored) {
+            setActiveScenario(stored, { persist: false });
+        } else {
+            updateAutoScrollControls();
+        }
+    });
+
+    function updateAutoScrollControls() {
+        if (!autoScrollBtn || !stopBtn) return;
+        const scenario = getActiveScenario();
+        const supportsAuto = scenario?.autoScrollSupported !== false;
+        if (supportsAuto) {
+            autoScrollBtn.style.display = autoScrollRunning ? 'none' : 'inline-block';
+            stopBtn.style.display = autoScrollRunning ? 'inline-block' : 'none';
+            if (autoScrollNotice) {
+                autoScrollNotice.style.display = 'none';
+            }
+        } else {
+            autoScrollBtn.style.display = 'none';
+            stopBtn.style.display = 'none';
+            if (autoScrollNotice) {
+                autoScrollNotice.style.display = 'block';
+                autoScrollNotice.textContent = scenario?.autoScrollNote || '该模式仅抓取当前屏幕显示的内容。';
+            }
+        }
+    }
+
+    function computeImageCount(data = []) {
+        return data.reduce((total, tweet) => {
+            if (!tweet || !Array.isArray(tweet.images)) return total;
+            return total + tweet.images.length;
+        }, 0);
+    }
+
+    function getScenarioData(id) {
+        const resolved = resolveScenarioId(id);
+        if (!scenarioDataStore[resolved]) {
+            scenarioDataStore[resolved] = [];
+        }
+        return scenarioDataStore[resolved];
+    }
+
+    function persistScenarioDataStore() {
+        const payload = {};
+        Object.entries(scenarioDataStore).forEach(([scenarioId, tweets]) => {
+            if (Array.isArray(tweets) && tweets.length > 0) {
+                payload[scenarioId] = tweets;
+            }
+        });
+        chrome.storage.local.set({ [DATA_CACHE_STORAGE_KEY]: payload });
+    }
+
+    function updateDataScenarioTabsState() {
+        if (!dataScenarioTabs) return;
+        const buttons = dataScenarioTabs.querySelectorAll('.data-scenario-tab');
+        buttons.forEach(button => {
+            const scenarioId = button.dataset.scenario;
+            button.classList.toggle('active', scenarioId === activeDataScenarioId);
+            const countEl = button.querySelector('.data-scenario-count');
+            if (countEl) {
+                countEl.textContent = getScenarioData(scenarioId).length.toLocaleString();
+            }
+        });
+    }
+
+    function renderDataScenarioTabs() {
+        if (!dataScenarioTabs) return;
+        dataScenarioTabs.innerHTML = '';
+        SCRAPE_SCENARIOS.forEach(scenario => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'data-scenario-tab';
+            button.dataset.scenario = scenario.id;
+            button.innerHTML = `
+                <span class="data-scenario-label">${scenario.label}</span>
+                <span class="data-scenario-count">0</span>
+            `;
+            button.addEventListener('click', () => {
+                setActiveDataScenario(scenario.id);
+            });
+            dataScenarioTabs.appendChild(button);
+        });
+        updateDataScenarioTabsState();
+    }
+
+    function setScenarioData(id, data, { persist = true, refreshView = true } = {}) {
+        const resolved = resolveScenarioId(id);
+        scenarioDataStore[resolved] = Array.isArray(data) ? data : [];
+        if (persist) {
+            persistScenarioDataStore();
+        }
+        updateDataScenarioTabsState();
+        if (refreshView && resolved === activeDataScenarioId) {
+            applyCurrentDataFromScenario();
+        }
+        refreshConsoleStatsForScenario(resolved);
+    }
+
+    function setActiveDataScenario(id) {
+        const resolved = resolveScenarioId(id);
+        if (activeDataScenarioId === resolved) {
+            updateDataScenarioTabsState();
+            applyCurrentDataFromScenario();
+            return;
+        }
+        activeDataScenarioId = resolved;
+        updateDataScenarioTabsState();
+        applyCurrentDataFromScenario();
+    }
+
+    function applyCurrentDataFromScenario() {
+        currentData = getScenarioData(activeDataScenarioId);
+        let dataToRender = currentData;
+        const searchQuery = (searchInput?.value || '').toLowerCase();
+        if (searchQuery) {
+            dataToRender = dataToRender.filter(tweet =>
+                (tweet.text || '').toLowerCase().includes(searchQuery)
+            );
+        }
+        if (sortState.column) {
+            dataToRender = sortData(dataToRender, sortState.column, sortState.direction);
+        }
+        renderTable(dataToRender);
+    }
+
+    function refreshConsoleStatsForScenario(targetScenarioId) {
+        if (!statsDiv) return;
+        const activeConsoleScenarioId = getActiveScenario().id;
+        const effectiveScenarioId = targetScenarioId || activeConsoleScenarioId;
+        if (effectiveScenarioId !== activeConsoleScenarioId) return;
+        const data = getScenarioData(effectiveScenarioId);
+        if (data.length === 0) {
+            tweetCountSpan.textContent = '0';
+            imgCountSpan.textContent = '0';
+            statsDiv.style.display = 'none';
+            return;
+        }
+        tweetCountSpan.textContent = data.length;
+        imgCountSpan.textContent = computeImageCount(data);
+        statsDiv.style.display = 'flex';
+    }
+
+    function bootstrapScenarioDataFromStorage() {
+        chrome.storage.local.get([DATA_CACHE_STORAGE_KEY, LEGACY_CACHE_KEY], (result) => {
+            const storedByScenario = result[DATA_CACHE_STORAGE_KEY];
+            let firstScenarioWithData = null;
+            if (storedByScenario && typeof storedByScenario === 'object') {
+                Object.entries(storedByScenario).forEach(([scenarioId, tweets]) => {
+                    const normalized = resolveScenarioId(scenarioId);
+                    setScenarioData(normalized, Array.isArray(tweets) ? tweets : [], { persist: false, refreshView: false });
+                    if (!firstScenarioWithData && scenarioDataStore[normalized].length > 0) {
+                        firstScenarioWithData = normalized;
+                    }
+                });
+            } else if (Array.isArray(result[LEGACY_CACHE_KEY])) {
+                const fallbackId = SCRAPE_SCENARIOS[0].id;
+                setScenarioData(fallbackId, result[LEGACY_CACHE_KEY], { persist: true, refreshView: false });
+                chrome.storage.local.remove(LEGACY_CACHE_KEY);
+                if (result[LEGACY_CACHE_KEY].length > 0) {
+                    firstScenarioWithData = fallbackId;
+                }
+            }
+            if (firstScenarioWithData) {
+                activeDataScenarioId = firstScenarioWithData;
+            }
+            updateDataScenarioTabsState();
+            applyCurrentDataFromScenario();
+            refreshConsoleStatsForScenario();
+            const hasAnyData = Object.values(scenarioDataStore).some(items => Array.isArray(items) && items.length > 0);
+            if (hasAnyData) {
+                setStatus('Loaded cached data.', 'success');
+            }
+        });
+    }
+
+    function requestStopAutoScroll({ silent = false } = {}) {
+        if (!autoScrollRunning) {
+            updateAutoScrollControls();
+            return;
+        }
+        autoScrollRunning = false;
+        updateAutoScrollControls();
+        sendMessageToActiveTab({ action: "stop_scroll" }, (response) => {
+            if (response && response.success && Array.isArray(response.data)) {
+                updateUI(response.data, response.scenarioId || activeDataScenarioId);
+            }
+            if (!silent) {
+                setStatus('Stopped.', 'success');
+            }
+        });
+    }
 
     // --- Tab Switching Logic ---
     tabs.forEach(tab => {
@@ -80,6 +398,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 renderTable(dataToRender);
+            } else if (target === 'storage') {
+                updateStorageUI();
             }
         });
     });
@@ -103,7 +423,136 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Search Logic ---
+    const SEARCH_HISTORY_KEY = 'x_data_search_history';
+    const MAX_HISTORY_ITEMS = 10;
+    let searchHistory = [];
+
+    // Load search history from localStorage
+    function loadSearchHistory() {
+        try {
+            const stored = localStorage.getItem(SEARCH_HISTORY_KEY);
+            searchHistory = stored ? JSON.parse(stored) : [];
+        } catch (err) {
+            console.error('Failed to load search history:', err);
+            searchHistory = [];
+        }
+    }
+
+    // Save search history to localStorage
+    function saveSearchHistory() {
+        try {
+            localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+        } catch (err) {
+            console.error('Failed to save search history:', err);
+        }
+    }
+
+    // Add item to search history
+    function addToSearchHistory(query) {
+        if (!query || query.trim().length === 0) return;
+
+        const trimmedQuery = query.trim();
+
+        // Remove if already exists (move to top)
+        searchHistory = searchHistory.filter(item => item !== trimmedQuery);
+
+        // Add to beginning
+        searchHistory.unshift(trimmedQuery);
+
+        // Limit to max items
+        if (searchHistory.length > MAX_HISTORY_ITEMS) {
+            searchHistory = searchHistory.slice(0, MAX_HISTORY_ITEMS);
+        }
+
+        saveSearchHistory();
+        renderSearchHistory();
+    }
+
+    // Remove item from search history
+    function removeFromSearchHistory(query) {
+        searchHistory = searchHistory.filter(item => item !== query);
+        saveSearchHistory();
+        renderSearchHistory();
+    }
+
+    // Clear all search history
+    function clearSearchHistory() {
+        searchHistory = [];
+        saveSearchHistory();
+        renderSearchHistory();
+    }
+
+    // Render search history dropdown
+    function renderSearchHistory() {
+        if (!searchHistoryList || !searchHistoryEmpty) return;
+
+        searchHistoryList.innerHTML = '';
+
+        if (searchHistory.length === 0) {
+            searchHistoryList.style.display = 'none';
+            searchHistoryEmpty.style.display = 'flex';
+        } else {
+            searchHistoryList.style.display = 'block';
+            searchHistoryEmpty.style.display = 'none';
+
+            searchHistory.forEach(query => {
+                const item = document.createElement('div');
+                item.className = 'search-history-item';
+                item.innerHTML = `
+                    <div class="search-history-icon">
+                        <i class="ri-search-line"></i>
+                    </div>
+                    <div class="search-history-text">${escapeHtml(query)}</div>
+                    <button class="search-history-remove" title="Remove" aria-label="Remove from history">
+                        <i class="ri-close-line"></i>
+                    </button>
+                `;
+
+                // Click history item to search
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.search-history-remove')) {
+                        return; // Handle by remove button
+                    }
+                    searchInput.value = query;
+                    searchInput.dispatchEvent(new Event('input'));
+                    hideSearchHistory();
+                });
+
+                // Remove button
+                const removeBtn = item.querySelector('.search-history-remove');
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeFromSearchHistory(query);
+                });
+
+                searchHistoryList.appendChild(item);
+            });
+        }
+    }
+
+    // Show search history dropdown
+    function showSearchHistory() {
+        if (!searchHistoryDropdown) return;
+        searchHistoryDropdown.classList.remove('hidden');
+    }
+
+    // Hide search history dropdown
+    function hideSearchHistory() {
+        if (!searchHistoryDropdown) return;
+        searchHistoryDropdown.classList.add('hidden');
+    }
+
+    // Initialize search history
+    loadSearchHistory();
+    renderSearchHistory();
+
     if (searchInput) {
+        // Show history on focus
+        searchInput.addEventListener('focus', () => {
+            showSearchHistory();
+        });
+
+        // Handle input changes
         searchInput.addEventListener('input', (e) => {
             const query = e.target.value.toLowerCase();
 
@@ -122,6 +571,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             renderTable(filtered);
+        });
+
+        // Handle Enter key to save history
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const query = searchInput.value.trim();
+                if (query.length > 0) {
+                    addToSearchHistory(query);
+                    hideSearchHistory();
+                }
+            } else if (e.key === 'Escape') {
+                hideSearchHistory();
+            }
         });
     }
 
@@ -142,6 +604,26 @@ document.addEventListener('DOMContentLoaded', () => {
             searchInput.focus();
         });
     }
+
+    // Clear history button handler
+    if (clearHistoryBtn) {
+        clearHistoryBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm('Clear all search history?')) {
+                clearSearchHistory();
+            }
+        });
+    }
+
+    // Click outside to close dropdown
+    document.addEventListener('click', (e) => {
+        if (!searchHistoryDropdown) return;
+
+        const searchBox = document.querySelector('.search-box');
+        if (searchBox && !searchBox.contains(e.target)) {
+            hideSearchHistory();
+        }
+    });
 
     // --- Sorting Logic ---
     const sortableHeaders = document.querySelectorAll('.sortable');
@@ -171,14 +653,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Load cached data immediately
-    chrome.storage.local.get(['cached_tweets'], (result) => {
-        if (result.cached_tweets && result.cached_tweets.length > 0) {
-            currentData = result.cached_tweets;
-            updateUI(currentData);
-            setStatus('Loaded cached data.', 'success');
-        }
-    });
+    renderDataScenarioTabs();
+    bootstrapScenarioDataFromStorage();
 
     if (toggleSidebarBtn) {
         // If we are already inside the embedded sidebar, hide the toggle button
@@ -303,6 +779,92 @@ document.addEventListener('DOMContentLoaded', () => {
             return num.toLocaleString();
         }
         return compactNumberFormat.format(num);
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0 || bytes === null || bytes === undefined) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+    }
+
+    // --- Storage Monitoring Functions ---
+    async function getStorageInfo() {
+        return new Promise((resolve) => {
+            chrome.storage.local.getBytesInUse(null, (bytesInUse) => {
+                chrome.storage.local.get([DATA_CACHE_STORAGE_KEY, LEGACY_CACHE_KEY], (result) => {
+                    let tweets = [];
+                    const storedByScenario = result[DATA_CACHE_STORAGE_KEY];
+                    if (storedByScenario && typeof storedByScenario === 'object') {
+                        Object.values(storedByScenario).forEach(list => {
+                            if (Array.isArray(list)) {
+                                tweets = tweets.concat(list);
+                            }
+                        });
+                    } else if (Array.isArray(result[LEGACY_CACHE_KEY])) {
+                        tweets = result[LEGACY_CACHE_KEY];
+                    }
+                    const tweetCount = tweets.length;
+                    const avgSize = tweetCount > 0 ? bytesInUse / tweetCount : 0;
+
+                    // Chrome storage.local default quota is 5MB (QUOTA_BYTES = 5242880)
+                    const quota = 5 * 1024 * 1024; // 5MB in bytes
+                    const usagePercent = (bytesInUse / quota) * 100;
+                    let lastUpdateIso = null;
+                    tweets.forEach(tweet => {
+                        if (!tweet || !tweet.timestamp) return;
+                        const ts = new Date(tweet.timestamp);
+                        if (Number.isNaN(ts.getTime())) return;
+                        if (!lastUpdateIso || ts.getTime() > new Date(lastUpdateIso).getTime()) {
+                            lastUpdateIso = ts.toISOString();
+                        }
+                    });
+
+                    resolve({
+                        bytesInUse,
+                        quota,
+                        usagePercent,
+                        tweetCount,
+                        avgSize,
+                        lastUpdateIso
+                    });
+                });
+            });
+        });
+    }
+
+    async function updateStorageUI() {
+        if (!storageUsedSpan) return;
+
+        const info = await getStorageInfo();
+
+        storageUsedSpan.textContent = formatBytes(info.bytesInUse);
+        storageQuotaSpan.textContent = `配额: ${formatBytes(info.quota)}`;
+        storagePercentSpan.textContent = `${info.usagePercent.toFixed(1)}%`;
+        storageBarFill.style.width = `${Math.min(info.usagePercent, 100)}%`;
+
+        // Change gradient and glow based on usage
+        if (info.usagePercent >= 90) {
+            storageBarFill.style.background = 'linear-gradient(90deg, #f4212e 0%, #ff4458 100%)';
+            storageBarFill.style.boxShadow = '0 0 12px rgba(244, 33, 46, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+        } else if (info.usagePercent >= 70) {
+            storageBarFill.style.background = 'linear-gradient(90deg, #ff9500 0%, #ffb340 100%)';
+            storageBarFill.style.boxShadow = '0 0 12px rgba(255, 149, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+        } else {
+            storageBarFill.style.background = 'linear-gradient(90deg, #00ba7c 0%, #00d68f 100%)';
+            storageBarFill.style.boxShadow = '0 0 12px rgba(0, 186, 124, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+        }
+
+        storageTweetCountSpan.textContent = info.tweetCount.toLocaleString();
+        storageAvgSizeSpan.textContent = formatBytes(info.avgSize);
+
+        if (info.lastUpdateIso) {
+            const lastUpdate = formatTimestamp(info.lastUpdateIso);
+            storageLastUpdateSpan.textContent = lastUpdate.title;
+        } else {
+            storageLastUpdateSpan.textContent = '暂无数据';
+        }
     }
 
     function textLooksTruncated(text = '') {
@@ -700,24 +1262,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (updates.size > 0) {
             const updatedIds = new Set(updates.keys());
             currentData = currentData.map(tweet => updatedIds.has(tweet.id) ? updates.get(tweet.id) : tweet);
-            chrome.storage.local.set({ cached_tweets: currentData }, () => {
-                if (chrome.runtime.lastError) {
-                    console.error('X Data Scraper: Failed to persist VxTwitter details', chrome.runtime.lastError);
-                    updateDetailStatus('写入缓存失败，请稍后重试。', 'error');
-                    return;
-                }
-                updateUI(currentData);
-                // Clear status and show toast notification
-                updateDetailStatus('');
-                const toastType = successCount === targets.length ? 'success' : (successCount > 0 ? 'success' : 'error');
-                showToast(`VxTwitter 同步完成，成功 ${successCount}/${targets.length} 条`, toastType, 3000);
+            updateUI(currentData, activeDataScenarioId);
+            updateDetailStatus('');
+            const toastType = successCount === targets.length ? 'success' : (successCount > 0 ? 'success' : 'error');
+            showToast(`VxTwitter 同步完成，成功 ${successCount}/${targets.length} 条`, toastType, 3000);
 
-                // Notify content script to update its cache
-                sendMessageToActiveTab({ action: "update_cache", data: currentData }, (response) => {
-                    if (response && response.success) {
-                        console.log(`X Data Scraper: Content script cache updated, total: ${response.count}`);
-                    }
-                });
+            // Notify content script to update its cache
+            sendMessageToActiveTab({ action: "update_cache", scenarioId: activeDataScenarioId, data: currentData }, (response) => {
+                if (response && response.success) {
+                    console.log(`X Data Scraper: Content script cache updated, total: ${response.count}`);
+                }
             });
         } else {
             updateDetailStatus('VxTwitter 请求未能更新任何推文。', 'error');
@@ -727,26 +1281,8 @@ document.addEventListener('DOMContentLoaded', () => {
         vxSyncInProgress = false;
     }
 
-    function updateUI(data) {
-        currentData = data;
-        let totalImgs = 0;
-        data.forEach(t => totalImgs += (t.images ? t.images.length : 0));
-
-        tweetCountSpan.textContent = data.length;
-        imgCountSpan.textContent = totalImgs;
-        statsDiv.style.display = 'flex';
-
-        // Update table if it's currently showing
-        if (document.getElementById('data-view').classList.contains('active')) {
-            let dataToRender = data;
-            if (sortState.column) {
-                dataToRender = sortData(data, sortState.column, sortState.direction);
-            }
-            renderTable(dataToRender);
-        }
-
-        // Removed auto-trigger of VxTwitter sync
-        // Now only manually triggered after scraping is complete
+    function updateUI(data, scenarioId = activeDataScenarioId) {
+        setScenarioData(scenarioId, Array.isArray(data) ? data : []);
     }
 
     function renderTable(data) {
@@ -821,6 +1357,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (!tabs[0]) {
                 console.error("No active tab found");
+                if (callback) callback(null);
                 return;
             }
 
@@ -828,7 +1365,6 @@ document.addEventListener('DOMContentLoaded', () => {
             chrome.tabs.sendMessage(tabId, msg, (response) => {
                 if (chrome.runtime.lastError) {
                     console.log("Content script not detected, injecting...");
-                    // Script not injected or context invalidated
                     chrome.scripting.executeScript({
                         target: { tabId: tabId },
                         files: ['content.js']
@@ -836,10 +1372,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (chrome.runtime.lastError) {
                             console.error("Injection failed:", chrome.runtime.lastError.message);
                             setStatus("Failed to inject script. Reload page.", "error");
+                            if (callback) callback(null);
                         } else {
-                            // Try again after a short delay
                             setTimeout(() => {
-                                chrome.tabs.sendMessage(tabId, msg, callback);
+                                chrome.tabs.sendMessage(tabId, msg, (retryResponse) => {
+                                    if (chrome.runtime.lastError) {
+                                        console.error("Message retry failed:", chrome.runtime.lastError.message);
+                                        if (callback) callback(null);
+                                        return;
+                                    }
+                                    if (callback) {
+                                        callback(retryResponse);
+                                    }
+                                });
                             }, 300);
                         }
                     });
@@ -851,10 +1396,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     scrapeBtn.addEventListener('click', () => {
-        setStatus('Scraping...');
-        sendMessageToActiveTab({ action: "scrape" }, (response) => {
+        const scenario = getActiveScenario();
+        setStatus(`Scraping ${scenarioStatusLabel(scenario)}...`);
+        sendMessageToActiveTab({ action: "scrape", scenarioId: activeScenarioId }, (response) => {
             if (response && response.success) {
-                updateUI(response.data);
+                updateUI(response.data, response.scenarioId || activeScenarioId);
                 setStatus('Scrape complete!', 'success');
             } else {
                 setStatus('Error scraping view.', 'error');
@@ -863,38 +1409,48 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     autoScrollBtn.addEventListener('click', () => {
-        autoScrollBtn.style.display = 'none';
-        stopBtn.style.display = 'inline-block';
-        setStatus('Auto-scrolling...');
+        const scenario = getActiveScenario();
+        if (scenario.autoScrollSupported === false) {
+            setStatus('该场景仅抓取当前屏幕，不支持自动滚动。', 'error');
+            return;
+        }
+        if (autoScrollRunning) return;
 
-        sendMessageToActiveTab({ action: "start_scroll" }, (response) => {
-            if (response && response.success) {
-                // Background loop started
+        autoScrollRunning = true;
+        updateAutoScrollControls();
+        setStatus(`Auto-scrolling ${scenarioStatusLabel(scenario)}...`);
+
+        sendMessageToActiveTab({ action: "start_scroll", scenarioId: activeScenarioId }, (response) => {
+            if (!response || !response.success) {
+                autoScrollRunning = false;
+                updateAutoScrollControls();
+                const err = response && response.error;
+                if (err === 'auto_scroll_disabled') {
+                    setStatus('该场景禁用了自动滚动，仅抓取当前屏。', 'error');
+                } else {
+                    setStatus('启动自动滚动失败，请刷新页面后重试。', 'error');
+                }
             }
         });
     });
 
     stopBtn.addEventListener('click', () => {
-        sendMessageToActiveTab({ action: "stop_scroll" }, (response) => {
-            if (response && response.success) {
-                updateUI(response.data);
-                autoScrollBtn.style.display = 'inline-block';
-                stopBtn.style.display = 'none';
-                setStatus('Stopped.', 'success');
-            }
-        });
+        requestStopAutoScroll();
     });
 
     // Handle updates during auto-scroll
     chrome.runtime.onMessage.addListener((request) => {
         if (request.action === "update_count") {
-            tweetCountSpan.textContent = request.count;
-            // Optionally update table in real-time if visible,
-            // but might be heavy. Let's just update count for now.
+            if (!request.scenarioId || request.scenarioId === getActiveScenario().id) {
+                tweetCountSpan.textContent = request.count;
+                statsDiv.style.display = 'flex';
+            }
         } else if (request.action === "scroll_finished") {
-            updateUI(request.data);
-            autoScrollBtn.style.display = 'inline-block';
-            stopBtn.style.display = 'none';
+            autoScrollRunning = false;
+            updateAutoScrollControls();
+            if (Array.isArray(request.data)) {
+                updateUI(request.data, request.scenarioId || activeDataScenarioId);
+            }
             setStatus('Auto-scroll finished.', 'success');
         }
     });
@@ -924,6 +1480,33 @@ document.addEventListener('DOMContentLoaded', () => {
     if (refreshDetailsBtn) {
         refreshDetailsBtn.addEventListener('click', () => {
             refreshDetailsFromVxTwitter(true);
+        });
+    }
+
+    // --- Storage View Event Listeners ---
+    if (refreshStorageBtn) {
+        refreshStorageBtn.addEventListener('click', async () => {
+            await updateStorageUI();
+            showToast('存储统计已刷新', 'success', 2000);
+        });
+    }
+
+    if (clearStorageBtn) {
+        clearStorageBtn.addEventListener('click', () => {
+            if (confirm('确定要清空所有缓存数据吗？此操作不可恢复。')) {
+                chrome.storage.local.clear(() => {
+                    Object.keys(scenarioDataStore).forEach(key => delete scenarioDataStore[key]);
+                    updateDataScenarioTabsState();
+                    applyCurrentDataFromScenario();
+                    refreshConsoleStatsForScenario();
+                    updateStorageUI();
+                    showToast('缓存已清空', 'success', 2000);
+                    setStatus('Cache cleared.', 'success');
+                    SCRAPE_SCENARIOS.forEach(scenario => {
+                        sendMessageToActiveTab({ action: "update_cache", scenarioId: scenario.id, data: [] });
+                    });
+                });
+            }
         });
     }
 
@@ -1101,6 +1684,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (tableContainer) {
         tableContainer.addEventListener('scroll', () => {
+            // Add shadow to header when scrolled
+            if (tableContainer.scrollTop > 0) {
+                tableContainer.classList.add('scrolled');
+            } else {
+                tableContainer.classList.remove('scrolled');
+            }
+
+            // Update tooltip position if visible
             if (activeTooltipRow) {
                 if (isEmbedded) {
                     const rect = activeTooltipRow.getBoundingClientRect();

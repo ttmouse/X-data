@@ -1,7 +1,7 @@
 // X Data Scraper - Content Script
 
 let isScrolling = false;
-let allTweetsMap = new Map(); // Key: ID, Value: Tweet Object
+let allTweetsMap = new Map(); // Re-assigned based on active scenario
 let sidebarVisible = false;
 
 // Configuration
@@ -23,20 +23,113 @@ const ROUTER_PATH_CANDIDATES = [
   ['__twttr', 'router']
 ];
 const PENDING_INLINE_ACTION_KEY = 'x_data_pending_inline_action';
-
-// Load cached data on init
-chrome.storage.local.get(['cached_tweets'], (result) => {
-  if (result.cached_tweets) {
-    result.cached_tweets.forEach(tweet => allTweetsMap.set(tweet.id, tweet));
-    console.log(`X Data Scraper: Loaded ${allTweetsMap.size} tweets from cache.`);
+const SCRAPE_SCENARIOS = {
+  analytics_auto: {
+    id: 'analytics_auto',
+    label: '内容分析列表',
+    targetUrl: ANALYTICS_PAGE_URL,
+    matchPathPrefixes: ['/i/account_analytics/content'],
+    autoScrollAllowed: true
+  },
+  bookmarks_auto: {
+    id: 'bookmarks_auto',
+    label: '我的收藏',
+    targetUrl: 'https://x.com/i/bookmarks',
+    matchPathPrefixes: ['/i/bookmarks'],
+    autoScrollAllowed: true
+  },
+  current_auto: {
+    id: 'current_auto',
+    label: '当前页面（自动滚动）',
+    useCurrentLocation: true,
+    autoScrollAllowed: true
+  },
+  current_single: {
+    id: 'current_single',
+    label: '当前页面（第一屏）',
+    useCurrentLocation: true,
+    autoScrollAllowed: false
   }
-});
+};
+const SCENARIO_ALIAS_MAP = {
+  analytics: 'analytics_auto',
+  bookmarks: 'bookmarks_auto',
+  lists: 'current_auto',
+  search: 'current_auto'
+};
+const DEFAULT_SCENARIO_ID = 'analytics_auto';
+const SCENARIO_CACHE_KEY = 'cached_tweets_by_scenario';
+const LEGACY_CACHE_KEY = 'cached_tweets';
+const scenarioTweetMaps = new Map();
+let activeCacheScenarioId = DEFAULT_SCENARIO_ID;
+
+function getScenarioTweetMap(scenarioId) {
+  const normalized = normalizeScenarioId(scenarioId);
+  if (!scenarioTweetMaps.has(normalized)) {
+    scenarioTweetMaps.set(normalized, new Map());
+  }
+  return scenarioTweetMaps.get(normalized);
+}
+
+function switchScenarioCache(targetScenarioId) {
+  const normalized = normalizeScenarioId(targetScenarioId || DEFAULT_SCENARIO_ID);
+  activeCacheScenarioId = normalized;
+  allTweetsMap = getScenarioTweetMap(normalized);
+  return allTweetsMap;
+}
+
+function serializeScenarioCaches() {
+  const payload = {};
+  scenarioTweetMaps.forEach((map, scenarioId) => {
+    if (map && map.size > 0) {
+      payload[scenarioId] = Array.from(map.values());
+    }
+  });
+  return payload;
+}
 
 // Helper to save cache
 function saveCache() {
-  const data = Array.from(allTweetsMap.values());
-  chrome.storage.local.set({ cached_tweets: data });
+  const payload = serializeScenarioCaches();
+  chrome.storage.local.set({ [SCENARIO_CACHE_KEY]: payload });
 }
+
+function initializeScenarioCaches() {
+  chrome.storage.local.get([SCENARIO_CACHE_KEY, LEGACY_CACHE_KEY], (result) => {
+    let total = 0;
+    const storedByScenario = result[SCENARIO_CACHE_KEY];
+    if (storedByScenario && typeof storedByScenario === 'object') {
+      Object.entries(storedByScenario).forEach(([scenarioId, tweets]) => {
+        const normalized = normalizeScenarioId(scenarioId);
+        const map = getScenarioTweetMap(normalized);
+        map.clear();
+        if (Array.isArray(tweets)) {
+          tweets.forEach(tweet => {
+            if (tweet && tweet.id) {
+              map.set(tweet.id, tweet);
+              total++;
+            }
+          });
+        }
+      });
+    } else if (Array.isArray(result[LEGACY_CACHE_KEY])) {
+      const legacyMap = getScenarioTweetMap(DEFAULT_SCENARIO_ID);
+      legacyMap.clear();
+      result[LEGACY_CACHE_KEY].forEach(tweet => {
+        if (tweet && tweet.id) {
+          legacyMap.set(tweet.id, tweet);
+          total++;
+        }
+      });
+      saveCache();
+      chrome.storage.local.remove(LEGACY_CACHE_KEY);
+    }
+    switchScenarioCache(DEFAULT_SCENARIO_ID);
+    console.log(`X Data Scraper: Loaded ${total} tweets from cache across ${scenarioTweetMaps.size} scenarios.`);
+  });
+}
+
+initializeScenarioCaches();
 
 function parseCount(value) {
   if (!value) return null;
@@ -634,7 +727,9 @@ function scrapeCurrentView() {
   return newCount;
 }
 
-async function autoScrollLoop() {
+async function autoScrollLoop(targetScenarioId = activeCacheScenarioId) {
+  const scenarioId = normalizeScenarioId(targetScenarioId);
+  switchScenarioCache(scenarioId);
   isScrolling = true;
   let noChangeCount = 0;
   const maxNoChange = 5;
@@ -683,6 +778,7 @@ async function autoScrollLoop() {
     // Notify
     chrome.runtime.sendMessage({
       action: "update_count",
+      scenarioId,
       count: allTweetsMap.size
     });
 
@@ -739,48 +835,66 @@ async function autoScrollLoop() {
   return Array.from(allTweetsMap.values());
 }
 
-// Check if current page is the analytics page
-function isOnAnalyticsPage() {
-  const currentPath = window.location.pathname + window.location.search;
-  return currentPath.includes('/i/account_analytics/content');
+function normalizeScenarioId(scenarioId) {
+  if (!scenarioId) return DEFAULT_SCENARIO_ID;
+  if (SCRAPE_SCENARIOS[scenarioId]) return scenarioId;
+  const alias = SCENARIO_ALIAS_MAP[scenarioId];
+  if (alias && SCRAPE_SCENARIOS[alias]) return alias;
+  return DEFAULT_SCENARIO_ID;
 }
 
-// Navigate to analytics page and wait for it to load
-function ensureOnAnalyticsPage(callback) {
-  if (isOnAnalyticsPage()) {
-    console.log('X Data Scraper: Already on analytics page');
+function getScenarioConfig(scenarioId) {
+  const normalized = normalizeScenarioId(scenarioId);
+  return SCRAPE_SCENARIOS[normalized] || SCRAPE_SCENARIOS[DEFAULT_SCENARIO_ID];
+}
+
+function scenarioMatchesCurrentLocation(scenario) {
+  if (!scenario || scenario.useCurrentLocation) return true;
+  const currentPath = window.location.pathname + window.location.search;
+  if (Array.isArray(scenario.matchPathPrefixes) && scenario.matchPathPrefixes.length > 0) {
+    return scenario.matchPathPrefixes.some(prefix => currentPath.startsWith(prefix));
+  }
+  if (!scenario.targetUrl) return true;
+  return normalizeUrlForComparison(window.location.href) === normalizeUrlForComparison(scenario.targetUrl);
+}
+
+function ensureOnScenarioPage(scenario, callback) {
+  const targetScenario = scenario || getScenarioConfig();
+  if (!targetScenario || targetScenario.useCurrentLocation || !targetScenario.targetUrl) {
     callback();
     return;
   }
 
-  console.log('X Data Scraper: Not on analytics page, navigating via SPA...');
+  if (scenarioMatchesCurrentLocation(targetScenario)) {
+    console.log(`X Data Scraper: Already on ${targetScenario.label || targetScenario.id}`);
+    callback();
+    return;
+  }
+
+  const label = targetScenario.label || targetScenario.id;
+  console.log(`X Data Scraper: Navigating to ${label} via SPA...`);
 
   let navigationCompleted = false;
-
-  // Set up a listener for when navigation completes
   const checkInterval = setInterval(() => {
-    if (isOnAnalyticsPage()) {
+    if (scenarioMatchesCurrentLocation(targetScenario)) {
       clearInterval(checkInterval);
       navigationCompleted = true;
-      // Wait a bit more for content to load
       setTimeout(() => {
-        console.log('X Data Scraper: Analytics page loaded, ready to scrape');
+        console.log(`X Data Scraper: ${label} page loaded, ready to scrape`);
         callback();
       }, 1500);
     }
   }, 500);
 
-  // Navigate to the analytics page using SPA navigation
-  const navResult = navigateWithinPage(null, ANALYTICS_PAGE_URL);
-  console.log('X Data Scraper: Navigation initiated:', navResult ? 'success' : 'failed');
+  const navResult = navigateWithinPage(null, targetScenario.targetUrl);
+  console.log(`X Data Scraper: Navigation initiated (${label}):`, navResult ? 'success' : 'failed');
 
-  // Timeout fallback
   setTimeout(() => {
     clearInterval(checkInterval);
-    if (!navigationCompleted && !isOnAnalyticsPage()) {
-      console.error('X Data Scraper: Failed to navigate to analytics page within timeout');
+    if (!navigationCompleted && !scenarioMatchesCurrentLocation(targetScenario)) {
+      console.error(`X Data Scraper: Failed to navigate to ${label} within timeout`);
       console.log('X Data Scraper: Current URL:', window.location.href);
-      console.log('X Data Scraper: Target URL:', ANALYTICS_PAGE_URL);
+      console.log('X Data Scraper: Target URL:', targetScenario.targetUrl);
     }
   }, 10000);
 }
@@ -788,27 +902,36 @@ function ensureOnAnalyticsPage(callback) {
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "scrape") {
-    // Ensure we're on analytics page before scraping
-    ensureOnAnalyticsPage(() => {
+    const scenario = getScenarioConfig(request.scenarioId);
+    const scenarioId = scenario.id;
+    switchScenarioCache(scenarioId);
+    ensureOnScenarioPage(scenario, () => {
       scrapeCurrentView();
-      sendResponse({ success: true, data: Array.from(allTweetsMap.values()) });
+      sendResponse({ success: true, scenarioId, data: Array.from(allTweetsMap.values()) });
     });
     return true; // Keep message channel open for async response
   }
   else if (request.action === "start_scroll") {
     if (!isScrolling) {
-      // Ensure we're on analytics page before starting auto-scroll
-      ensureOnAnalyticsPage(() => {
+      const scenario = getScenarioConfig(request.scenarioId);
+      if (scenario && scenario.autoScrollAllowed === false) {
+        sendResponse({ success: false, error: 'auto_scroll_disabled' });
+        return false;
+      }
+      const scenarioId = scenario.id;
+      switchScenarioCache(scenarioId);
+      ensureOnScenarioPage(scenario, () => {
         // Keep existing data - incremental scraping
-        console.log(`X Data Scraper: Starting auto-scroll with ${allTweetsMap.size} existing tweets`);
-        autoScrollLoop().then(data => {
+        console.log(`X Data Scraper: Starting auto-scroll (${scenario.label || scenario.id}) with ${allTweetsMap.size} existing tweets`);
+        autoScrollLoop(scenarioId).then(data => {
           // Final data sent when loop finishes naturally
           chrome.runtime.sendMessage({
             action: "scroll_finished",
+            scenarioId,
             data: data
           });
         });
-        sendResponse({ success: true, status: "started" });
+        sendResponse({ success: true, status: "started", scenarioId });
       });
       return true; // Keep message channel open for async response
     }
@@ -816,7 +939,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   else if (request.action === "stop_scroll") {
     isScrolling = false;
-    sendResponse({ success: true, status: "stopping", data: Array.from(allTweetsMap.values()) });
+    sendResponse({ success: true, status: "stopping", scenarioId: activeCacheScenarioId, data: Array.from(allTweetsMap.values()) });
   }
   else if (request.action === "toggle_sidebar") {
     toggleSidebar();
@@ -828,6 +951,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Otherwise, next scrape will overwrite VxTwitter-synced data with old cached data
     // This ensures data consistency between popup and content script
     if (request.data && Array.isArray(request.data)) {
+      const scenarioId = normalizeScenarioId(request.scenarioId || activeCacheScenarioId);
+      switchScenarioCache(scenarioId);
       console.log(`X Data Scraper: Updating cache with ${request.data.length} tweets from VxTwitter sync`);
       request.data.forEach(tweet => {
         if (tweet.id) {
@@ -835,7 +960,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
       });
       saveCache();
-      sendResponse({ success: true, count: allTweetsMap.size });
+      sendResponse({ success: true, scenarioId, count: allTweetsMap.size });
     } else {
       sendResponse({ success: false, error: 'Invalid data format' });
     }
@@ -949,7 +1074,7 @@ let externalTooltipHideTimer = null;
 let externalTooltipHovering = false;
 const EXTERNAL_ACTION_ICONS = {
   reply: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12a3 3 0 013 3v6a3 3 0 01-3 3H9l-4 4V8a3 3 0 013-3z"/></svg>',
-  retweet: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h11v5l4-4-4-4v3H6a4 4 0 00-4 4v2"/><path d="M17 17H6v-5l-4 4 4 4v-3h12a4 4 0 004-4v-2"/></svg>',
+  retweet: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"/></svg>',
   like: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-8.5-7.43C1 10.5 2.75 6 6.5 6c2.04 0 3.57 1.21 4.5 2.54C12.93 7.21 14.46 6 16.5 6c3.75 0 5.5 4.5 3 7.57C18 16.65 12 21 12 21z"/></svg>',
   open: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M7 19V11"/><path d="M12 19V5"/><path d="M17 19v-7"/></svg>'
 };
