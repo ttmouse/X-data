@@ -1,0 +1,55 @@
+{
+    "manifest_version": 3,
+    "name": "X Data Scraper",
+    "version": "1.0",
+    "description": "Scrape tweets and media links from X/Twitter account analytics pages.",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage"
+    ],
+    "host_permissions": [
+        "https://api.vxtwitter.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "icons": {
+        "16": "icons/icon-16.png",
+        "32": "icons/icon-32.png",
+        "128": "icons/icon-128.png"
+    },
+    "action": {
+        "default_title": "X Data Scraper",
+        "default_icon": {
+            "16": "icons/icon-16.png",
+            "32": "icons/icon-32.png",
+            "128": "icons/icon-128.png"
+        }
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "popup.html",
+                "popup.js",
+                "style.css",
+                "icons/*"
+            ],
+            "matches": [
+                "https://twitter.com/*",
+                "https://x.com/*"
+            ]
+        }
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "https://twitter.com/*",
+                "https://x.com/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X Data Scraper</title>
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="sidebar-container">
+    <div class="header">
+      <div class="logo">
+        <img src="icons/icon-32.png" alt="logo">
+        <span>X Data Scraper</span>
+      </div>
+      <div class="tabs">
+        <div class="tab" data-tab="console">Console</div>
+        <div class="tab active" data-tab="data">Data</div>
+      </div>
+    </div>
+
+    <!-- Console View -->
+    <div id="console-view" class="view">
+      <p class="description">Scrape tweets from the current page auto-scrolling.</p>
+
+      <div class="controls">
+        <button id="scrapeBtn" class="primary-btn">Scrape Current View</button>
+        <div class="btn-group" style="margin-top: 8px; display: flex; gap: 8px;">
+          <button id="autoScrollBtn" class="primary-btn" style="background-color: #00ba7c;">Auto-Scroll Scrape</button>
+          <button id="stopBtn" class="primary-btn" style="background-color: #f4212e; display: none;">Stop</button>
+        </div>
+        <div style="margin-top: 8px;">
+          <button id="toggleSidebarBtn" class="primary-btn" style="background-color: #1d9bf0; width: 100%;">Show Sidebar
+            (Embedded)</button>
+        </div>
+      </div>
+
+      <div id="status" class="status"></div>
+
+      <div class="stats-simple" id="stats" style="display: none;">
+        <span>Tweets: <b id="tweetCount">0</b></span>
+        <span>Images: <b id="imgCount">0</b></span>
+      </div>
+    </div>
+
+    <!-- Data View (Table) -->
+    <div id="data-view" class="view active">
+      <div class="data-header">
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="Search tweets...">
+        </div>
+        <div class="data-actions">
+          <button id="refreshDetailsBtn" class="icon-btn" title="Fetch fresh details via VxTwitter"
+            aria-label="Fetch fresh details via VxTwitter">
+            <i class="ri-refresh-line" aria-hidden="true"></i>
+          </button>
+          <button id="copyBtn" class="icon-btn" title="Copy JSON" aria-label="Copy JSON">
+            <i class="ri-file-copy-line" aria-hidden="true"></i>
+          </button>
+          <button id="downloadBtn" class="icon-btn" title="Download JSON" aria-label="Download JSON">
+            <i class="ri-download-2-line" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="detailStatus" class="mini-status" aria-live="polite"></div>
+
+      <div class="table-wrapper">
+        <div id="tweetTooltip" class="tweet-tooltip hidden"></div>
+        <div class="table-container">
+          <table id="dataTable">
+            <thead>
+              <tr>
+                <th class="thumb-head"></th>
+                <th class="content-head sortable" data-sort="timestamp">Tweet</th>
+                <th class="stat-head sortable" data-sort="views" title="Views" aria-label="Views">
+                  <i class="ri-bar-chart-2-line stat-icon views-icon"></i>
+                </th>
+                <th class="stat-head sortable" data-sort="likes" title="Likes" aria-label="Likes">
+                  <i class="ri-heart-line stat-icon likes-icon"></i>
+                </th>
+                <th class="stat-head sortable" data-sort="retweets" title="Retweets" aria-label="Retweets">
+                  <i class="ri-repeat-line stat-icon retweets-icon"></i>
+                </th>
+                <th class="stat-head sortable" data-sort="replies" title="Replies" aria-label="Replies">
+                  <i class="ri-message-2-line stat-icon replies-icon"></i>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <!-- Data rows injected here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+
+</html>
