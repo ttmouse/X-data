@@ -885,6 +885,8 @@ const EXTERNAL_ACTION_ICONS = {
   like: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-8.5-7.43C1 10.5 2.75 6 6.5 6c2.04 0 3.57 1.21 4.5 2.54C12.93 7.21 14.46 6 16.5 6c3.75 0 5.5 4.5 3 7.57C18 16.65 12 21 12 21z"/></svg>',
   open: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14L21 3"/><path d="M5 5h6M5 5v14h14v-6"/></svg>'
 };
+const TOOLTIP_TEXT_COLLAPSED_HEIGHT = 120;
+let externalTooltipTextExpanded = false;
 
 function ensureExternalTooltip() {
   if (externalTooltipEl) return externalTooltipEl;
@@ -932,6 +934,47 @@ function scheduleExternalTooltipHide(delay = 250) {
     if (externalTooltipHovering) return;
     hideExternalTooltip();
   }, delay);
+}
+
+function applyExternalTooltipTextCollapse() {
+  if (!externalTooltipEl) return;
+  const textEl = externalTooltipEl.querySelector('[data-role="tooltip-text"]');
+  const toggleEl = externalTooltipEl.querySelector('[data-role="tooltip-text-toggle"]');
+  if (!textEl || !toggleEl) return;
+  const fadeEl = externalTooltipEl.querySelector('[data-role="tooltip-text-fade"]');
+
+  textEl.style.maxHeight = 'none';
+  textEl.style.overflow = 'visible';
+
+  const needsToggle = textEl.scrollHeight > (TOOLTIP_TEXT_COLLAPSED_HEIGHT + 4);
+  if (!needsToggle) {
+    toggleEl.style.display = 'none';
+    if (fadeEl) fadeEl.style.display = 'none';
+    return;
+  }
+
+  const applyState = () => {
+    if (externalTooltipTextExpanded) {
+      textEl.style.maxHeight = 'none';
+      textEl.style.overflow = 'visible';
+      if (fadeEl) fadeEl.style.display = 'none';
+      toggleEl.textContent = '收起';
+    } else {
+      textEl.style.maxHeight = `${TOOLTIP_TEXT_COLLAPSED_HEIGHT}px`;
+      textEl.style.overflow = 'hidden';
+      if (fadeEl) fadeEl.style.display = 'block';
+      toggleEl.textContent = '展开';
+    }
+  };
+
+  toggleEl.style.display = 'inline-flex';
+  toggleEl.onclick = (event) => {
+    event.preventDefault();
+    externalTooltipTextExpanded = !externalTooltipTextExpanded;
+    applyState();
+  };
+
+  applyState();
 }
 
 function positionExternalTooltip(rowRect) {
@@ -1021,7 +1064,13 @@ function showExternalTooltip(payload) {
   el.innerHTML = `
     <div style="font-size:12px;color:#8b98a5;margin-bottom:6px;">${escapeHtmlInline(tweet.timestamp || '—')}</div>
     ${previewHtml}
-    <div style="white-space:pre-wrap;margin-bottom:10px;">${escapeHtmlInline(tweet.text || '(No text)')}</div>
+    <div style="margin-bottom:10px;">
+      <div style="position:relative;">
+        <div data-role="tooltip-text" style="white-space:pre-wrap;line-height:1.4;color:#f7f9f9;">${escapeHtmlInline(tweet.text || '(No text)')}</div>
+        <div data-role="tooltip-text-fade" style="display:none;position:absolute;left:0;right:0;bottom:0;height:38px;background:linear-gradient(180deg, rgba(17,18,23,0) 0%, #111217 85%);pointer-events:none;"></div>
+      </div>
+      <button data-role="tooltip-text-toggle" style="display:none;margin-top:6px;border:none;background:none;color:#1d9bf0;font-weight:600;font-size:13px;cursor:pointer;padding:0;">展开</button>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 10px;font-size:12px;color:#b0b7c2;">
       <span>Views: <b style="color:#f7f9f9;">${escapeHtmlInline(stats.views || '0')}</b></span>
       <span>Likes: <b style="color:#f7f9f9;">${escapeHtmlInline(stats.likes || '0')}</b></span>
@@ -1031,7 +1080,9 @@ function showExternalTooltip(payload) {
     </div>
     ${actionsHtml}
   `;
+  externalTooltipTextExpanded = false;
   el.style.display = 'block';
+  applyExternalTooltipTextCollapse();
   lastTooltipRowRect = payload.rowRect || null;
 
   requestAnimationFrame(() => {
