@@ -936,10 +936,10 @@ let lastTooltipRowRect = null;
 let externalTooltipHideTimer = null;
 let externalTooltipHovering = false;
 const EXTERNAL_ACTION_ICONS = {
-  reply: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 9V5L3 12l7 7v-4a7 7 0 017 7c1-7-3-11-7-11z"/></svg>',
-  retweet: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h11v5l4-4-4-4v3H6a4 4 0 00-4 4v2"/><path d="M17 17H6v-5l-4 4 4 4v-3h12a4 4 0 004-4v-2"/></svg>',
-  like: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-8.5-7.43C1 10.5 2.75 6 6.5 6c2.04 0 3.57 1.21 4.5 2.54C12.93 7.21 14.46 6 16.5 6c3.75 0 5.5 4.5 3 7.57C18 16.65 12 21 12 21z"/></svg>',
-  open: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14L21 3"/><path d="M5 5h6M5 5v14h14v-6"/></svg>'
+  reply: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h12a3 3 0 013 3v6a3 3 0 01-3 3H9l-4 4V8a3 3 0 013-3z"/></svg>',
+  retweet: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h11v5l4-4-4-4v3H6a4 4 0 00-4 4v2"/><path d="M17 17H6v-5l-4 4 4 4v-3h12a4 4 0 004-4v-2"/></svg>',
+  like: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-8.5-7.43C1 10.5 2.75 6 6.5 6c2.04 0 3.57 1.21 4.5 2.54C12.93 7.21 14.46 6 16.5 6c3.75 0 5.5 4.5 3 7.57C18 16.65 12 21 12 21z"/></svg>',
+  open: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M7 19V11"/><path d="M12 19V5"/><path d="M17 19v-7"/></svg>'
 };
 const TOOLTIP_TEXT_COLLAPSED_HEIGHT = 120;
 const TOOLTIP_PREVIEW_MAX_HEIGHT = 220;
@@ -1203,51 +1203,51 @@ function showExternalTooltip(payload) {
     return str || '0';
   };
 
-  const metricsButtons = [
+  const metricDefinitions = [
     {
       type: 'reply',
-      label: '回复',
+      label: '评论',
       icon: EXTERNAL_ACTION_ICONS.reply,
-      count: formatStatValue(stats.replies),
-      intentUrl: tweetId ? `https://twitter.com/intent/tweet?in_reply_to=${tweetId}` : null,
-      targetUrl: tweetUrl || null
+      statKey: 'replies',
+      intentUrl: tweetId ? `https://twitter.com/intent/tweet?in_reply_to=${tweetId}` : null
     },
     {
       type: 'retweet',
-      label: '转推',
+      label: '转发',
       icon: EXTERNAL_ACTION_ICONS.retweet,
-      count: formatStatValue(stats.retweets),
-      intentUrl: tweetId ? `https://twitter.com/intent/retweet?tweet_id=${tweetId}` : null,
-      targetUrl: tweetUrl || null
+      statKey: 'retweets',
+      intentUrl: tweetId ? `https://twitter.com/intent/retweet?tweet_id=${tweetId}` : null
     },
     {
       type: 'like',
       label: '点赞',
       icon: EXTERNAL_ACTION_ICONS.like,
-      count: formatStatValue(stats.likes),
-      intentUrl: tweetId ? `https://twitter.com/intent/like?tweet_id=${tweetId}` : null,
-      targetUrl: tweetUrl || null
+      statKey: 'likes',
+      intentUrl: tweetId ? `https://twitter.com/intent/like?tweet_id=${tweetId}` : null
     },
     {
       type: 'open',
       label: '浏览',
       icon: EXTERNAL_ACTION_ICONS.open,
-      count: formatStatValue(stats.views),
-      targetUrl: tweetUrl || null
+      statKey: 'views'
     }
-  ];
+  ].map(def => ({
+    ...def,
+    count: formatStatValue(stats[def.statKey]),
+    targetUrl: tweetUrl || null
+  }));
 
   const metricsHtml = `
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      ${metricsButtons.map(button => `
+    <div style="display:flex;gap:12px;margin-top:8px;">
+      ${metricDefinitions.map(button => `
         <button type="button"
-          title="${escapeHtmlInline(button.label)}"
+          title="${escapeHtmlInline(button.label)}：${escapeHtmlInline(button.count)}"
           data-tooltip-action="${button.type}"
           ${button.targetUrl ? `data-target-url="${escapeHtmlInline(button.targetUrl)}"` : ''}
           ${button.intentUrl ? `data-intent-url="${escapeHtmlInline(button.intentUrl)}"` : ''}
-          style="flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 4px;border:none;background:none;color:#b0b7c2;font-size:13px;cursor:pointer;border-radius:999px;">
+          style="flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 8px;border:none;background:none;color:#b0b7c2;font-size:14px;cursor:pointer;border-radius:12px;">
           <span style="display:flex;align-items:center;justify-content:center;color:inherit;">${button.icon}</span>
-          <span style="color:#f7f9f9;font-weight:500;">${escapeHtmlInline(button.count)}</span>
+          <span style="color:#f7f9f9;font-weight:600;">${escapeHtmlInline(button.count)}</span>
         </button>
       `).join('')}
     </div>

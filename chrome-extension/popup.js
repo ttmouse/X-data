@@ -313,8 +313,37 @@ document.addEventListener('DOMContentLoaded', () => {
     function shouldSyncTweet(tweet, force = false) {
         if (!tweet || !tweet.id) return false;
         if (force) return true;
+
+        // Always sync if never synced before
         if (!tweet.vxMeta || !tweet.vxMeta.lastFetchedAt) return true;
-        return textLooksTruncated(tweet.text || '');
+
+        // Sync if text looks truncated
+        if (textLooksTruncated(tweet.text || '')) return true;
+
+        // Sync if timestamp is not precise (only has date, no time)
+        // Scraped timestamps are usually dates without hours/minutes/seconds
+        if (tweet.timestamp) {
+            const ts = new Date(tweet.timestamp);
+            if (!isNaN(ts.getTime())) {
+                // Check if the timestamp only has date (00:00:00)
+                const hours = ts.getUTCHours();
+                const minutes = ts.getUTCMinutes();
+                const seconds = ts.getUTCSeconds();
+                const milliseconds = ts.getUTCMilliseconds();
+                if (hours === 0 && minutes === 0 && seconds === 0 && milliseconds === 0) {
+                    return true; // Likely a date-only timestamp, need precise time
+                }
+            }
+        } else {
+            return true; // No timestamp at all
+        }
+
+        // Sync if stats look incomplete or zero (likely not fetched from API)
+        const stats = tweet.stats || {};
+        const hasLowStats = (stats.views || 0) === 0 && (stats.likes || 0) === 0 && (stats.retweets || 0) === 0;
+        if (hasLowStats) return true;
+
+        return false;
     }
 
     function parseIsoTimestamp(value) {
@@ -639,13 +668,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function refreshDetailsFromVxTwitter(force = false) {
-        if (vxSyncInProgress) return;
+        if (vxSyncInProgress) {
+            console.log('X Data Scraper: VxTwitter sync already in progress, skipping');
+            return;
+        }
         if (!currentData || currentData.length === 0) {
             updateDetailStatus('还没有可补充的缓存数据。');
             return;
         }
 
         const targets = currentData.filter(tweet => shouldSyncTweet(tweet, force));
+        console.log(`X Data Scraper: VxTwitter sync - Total tweets: ${currentData.length}, Targets: ${targets.length}, Force: ${force}`);
+
         if (targets.length === 0) {
             updateDetailStatus('所有推文的详情已经是最新。', 'success');
             return;
@@ -719,7 +753,8 @@ document.addEventListener('DOMContentLoaded', () => {
             renderTable(dataToRender);
         }
 
-        maybeTriggerAutoVxSync();
+        // Removed auto-trigger of VxTwitter sync
+        // Now only manually triggered after scraping is complete
     }
 
     function renderTable(data) {
@@ -828,10 +863,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Precise timestamps (hour/minute/second) - scraping only gets dates
     // 2. Accurate engagement stats (likes, retweets, replies, views)
     // 3. Complete media URLs and metadata
-    // We use refreshDetailsFromVxTwitter(false) to only sync tweets that need updating:
-    // - Tweets without vxMeta (never synced before)
-    // - Tweets with truncated text
-    // This balances API usage with data quality
+    // We use force=true to sync ALL tweets after scraping, not just selective ones
+    // This ensures all scraped data gets updated with precise information from VxTwitter
     scrapeBtn.addEventListener('click', () => {
         setStatus('Scraping...');
         sendMessageToActiveTab({ action: "scrape" }, (response) => {
@@ -840,8 +873,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 setStatus('Scrape complete!', 'success');
 
                 // Auto-sync with VxTwitter to get precise timestamps and stats
+                // Use force=true to update all tweets
                 setTimeout(() => {
-                    refreshDetailsFromVxTwitter(false);
+                    refreshDetailsFromVxTwitter(true);
                 }, 500);
             } else {
                 setStatus('Error scraping view.', 'error');
@@ -870,8 +904,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 setStatus('Stopped.', 'success');
 
                 // Auto-sync with VxTwitter to get precise timestamps and stats
+                // Use force=true to update all tweets
                 setTimeout(() => {
-                    refreshDetailsFromVxTwitter(false);
+                    refreshDetailsFromVxTwitter(true);
                 }, 500);
             }
         });
@@ -890,8 +925,9 @@ document.addEventListener('DOMContentLoaded', () => {
             setStatus('Auto-scroll finished.', 'success');
 
             // Auto-sync with VxTwitter to get precise timestamps and stats
+            // Use force=true to update all tweets
             setTimeout(() => {
-                refreshDetailsFromVxTwitter(false);
+                refreshDetailsFromVxTwitter(true);
             }, 500);
         }
     });
