@@ -182,6 +182,44 @@ function simulateTweetLinkClick(link) {
   }
 }
 
+function findTweetArticleElement(tweetId, targetUrl) {
+  const link = findInPageTweetLink(tweetId, targetUrl);
+  if (!link) return null;
+  if (typeof link.closest === 'function') {
+    const article = link.closest('article');
+    if (article) return article;
+  }
+  let current = link.parentElement;
+  while (current && current !== document.body) {
+    if (current.tagName && current.tagName.toLowerCase() === 'article') {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function triggerDomClick(element) {
+  if (!element) return false;
+  try {
+    ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(type => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      });
+      element.dispatchEvent(event);
+    });
+    if (typeof element.click === 'function') {
+      element.click();
+    }
+    return true;
+  } catch (err) {
+    console.warn('X Data Scraper: Failed to simulate DOM click', err);
+    return false;
+  }
+}
+
 function createSyntheticTweetLink(tweetId, targetUrl) {
   if (!targetUrl) return null;
   const anchor = document.createElement('a');
@@ -905,6 +943,26 @@ const EXTERNAL_ACTION_ICONS = {
 };
 const TOOLTIP_TEXT_COLLAPSED_HEIGHT = 120;
 const TOOLTIP_PREVIEW_MAX_HEIGHT = 220;
+const INLINE_ACTION_TEST_IDS = {
+  reply: 'reply',
+  retweet: 'retweet',
+  like: 'like'
+};
+const RETWEET_QUOTE_SELECTORS = [
+  '[data-testid="retweetWithComment"]',
+  '[data-testid="retweetWithCommentButton"]',
+  '[data-testid="retweetWithCommentMenuItem"]',
+  '[data-testid="retweetWithCommentMenu"]'
+];
+const RETWEET_QUOTE_KEYWORDS = [
+  'quote',
+  'quote post',
+  'quote tweet',
+  '引用',
+  '引用帖子',
+  '引用发帖',
+  '引用推文'
+];
 let externalTooltipTextExpanded = false;
 
 function ensureExternalTooltip() {
@@ -996,6 +1054,54 @@ function applyExternalTooltipTextCollapse() {
   applyState();
 }
 
+function attemptQuoteMenuSelection() {
+  for (const selector of RETWEET_QUOTE_SELECTORS) {
+    const el = document.querySelector(selector);
+    if (el && triggerDomClick(el)) {
+      return true;
+    }
+  }
+  const matchesKeyword = (text) => {
+    if (!text) return false;
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) return false;
+    return RETWEET_QUOTE_KEYWORDS.some(keyword => normalized.includes(keyword.toLowerCase()));
+  };
+  const menuCandidates = document.querySelectorAll('[role="menuitem"], [data-testid="Dropdown"] button, [data-testid="Dropdown"] div[role="menuitem"], div[role="menuitem"]');
+  for (const candidate of menuCandidates) {
+    if (matchesKeyword(candidate.textContent || '')) {
+      return triggerDomClick(candidate);
+    }
+  }
+  return false;
+}
+
+function scheduleQuoteMenuSelection() {
+  const maxWait = 2500;
+  const interval = 120;
+  const start = Date.now();
+  const poll = () => {
+    if (attemptQuoteMenuSelection()) return;
+    if (Date.now() - start >= maxWait) return;
+    setTimeout(poll, interval);
+  };
+  setTimeout(poll, 80);
+}
+
+function triggerInlineTweetAction(actionType, tweetId, targetUrl) {
+  const testId = INLINE_ACTION_TEST_IDS[actionType];
+  if (!testId) return false;
+  const article = findTweetArticleElement(tweetId, targetUrl);
+  if (!article) return false;
+  const button = article.querySelector(`[data-testid="${testId}"]`);
+  if (!button) return false;
+  const success = triggerDomClick(button);
+  if (success && actionType === 'retweet') {
+    scheduleQuoteMenuSelection();
+  }
+  return success;
+}
+
 function wireExternalTooltipActions(tweetId, defaultUrl) {
   if (!externalTooltipEl) return;
   const buttons = externalTooltipEl.querySelectorAll('[data-tooltip-action]');
@@ -1006,20 +1112,39 @@ function wireExternalTooltipActions(tweetId, defaultUrl) {
       event.preventDefault();
       event.stopPropagation();
 
+      const actionType = button.dataset.tooltipAction || 'open';
       const targetUrl = button.dataset.targetUrl || defaultUrl || '';
-      if (targetUrl) {
-        if (!navigateWithinPage(tweetId, targetUrl)) {
-          window.location.assign(targetUrl);
+      const intentUrl = button.dataset.intentUrl || '';
+
+      const navigateToTarget = () => {
+        if (targetUrl) {
+          if (!navigateWithinPage(tweetId, targetUrl)) {
+            window.location.assign(targetUrl);
+          }
+        } else if (intentUrl) {
+          window.location.assign(intentUrl);
         }
+      };
+
+      if (actionType === 'open') {
+        navigateToTarget();
         hideExternalTooltip();
         return;
       }
 
-      const intentUrl = button.dataset.intentUrl;
+      if (triggerInlineTweetAction(actionType, tweetId, targetUrl || defaultUrl || '')) {
+        hideExternalTooltip();
+        return;
+      }
+
       if (intentUrl) {
         window.location.assign(intentUrl);
         hideExternalTooltip();
+        return;
       }
+
+      navigateToTarget();
+      hideExternalTooltip();
     });
   });
 }
