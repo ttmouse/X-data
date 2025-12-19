@@ -22,6 +22,7 @@ const ROUTER_PATH_CANDIDATES = [
   ['__TWITTER_ROUTER__'],
   ['__twttr', 'router']
 ];
+const PENDING_INLINE_ACTION_KEY = 'x_data_pending_inline_action';
 
 // Load cached data on init
 chrome.storage.local.get(['cached_tweets'], (result) => {
@@ -89,6 +90,17 @@ function buildTweetPermalink(rawHref, tweetId) {
   }
 
   return href || fallback;
+}
+
+function alignUrlToCurrentOrigin(url) {
+  if (!url || typeof url !== 'string') return url;
+  try {
+    const parsed = new URL(url, window.location.href);
+    if (parsed.origin === window.location.origin) return parsed.href;
+    return `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return url;
+  }
 }
 
 function normalizeUrlForComparison(url) {
@@ -964,6 +976,7 @@ const RETWEET_QUOTE_KEYWORDS = [
   '引用推文'
 ];
 let externalTooltipTextExpanded = false;
+let pendingInlineActionTimer = null;
 
 function ensureExternalTooltip() {
   if (externalTooltipEl) return externalTooltipEl;
@@ -1113,40 +1126,124 @@ function wireExternalTooltipActions(tweetId, defaultUrl) {
       event.stopPropagation();
 
       const actionType = button.dataset.tooltipAction || 'open';
-      const targetUrl = button.dataset.targetUrl || defaultUrl || '';
+      const targetUrl = alignUrlToCurrentOrigin(button.dataset.targetUrl || defaultUrl || '');
       const intentUrl = button.dataset.intentUrl || '';
+      const normalizedCurrent = normalizeUrlForComparison(window.location.href);
+      const normalizedTarget = targetUrl ? normalizeUrlForComparison(targetUrl) : '';
+      const needsNavigation = targetUrl && normalizedTarget && normalizedTarget !== normalizedCurrent;
 
-      const navigateToTarget = () => {
-        if (targetUrl) {
+      if (actionType === 'open') {
+        if (needsNavigation) {
           if (!navigateWithinPage(tweetId, targetUrl)) {
             window.location.assign(targetUrl);
           }
         } else if (intentUrl) {
           window.location.assign(intentUrl);
         }
-      };
-
-      if (actionType === 'open') {
-        navigateToTarget();
         hideExternalTooltip();
         return;
       }
 
-      if (triggerInlineTweetAction(actionType, tweetId, targetUrl || defaultUrl || '')) {
+      if (!tweetId || !targetUrl) {
+        if (intentUrl) {
+          window.location.assign(intentUrl);
+        }
         hideExternalTooltip();
         return;
       }
 
-      if (intentUrl) {
-        window.location.assign(intentUrl);
-        hideExternalTooltip();
-        return;
+      setPendingInlineAction(actionType, tweetId, targetUrl);
+      resumePendingInlineAction();
+
+      if (needsNavigation) {
+        if (!navigateWithinPage(tweetId, targetUrl)) {
+          window.location.assign(targetUrl);
+        }
       }
 
-      navigateToTarget();
       hideExternalTooltip();
     });
   });
+}
+
+function setPendingInlineAction(actionType, tweetId, targetUrl) {
+  if (!actionType || !tweetId || !targetUrl) return;
+  try {
+    const payload = {
+      actionType,
+      tweetId,
+      targetUrl: alignUrlToCurrentOrigin(targetUrl),
+      createdAt: Date.now()
+    };
+    window.sessionStorage.setItem(PENDING_INLINE_ACTION_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn('X Data Scraper: Failed to store pending inline action', err);
+  }
+}
+
+function getPendingInlineAction() {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_INLINE_ACTION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn('X Data Scraper: Failed to read pending inline action', err);
+    return null;
+  }
+}
+
+function clearPendingInlineAction() {
+  try {
+    window.sessionStorage.removeItem(PENDING_INLINE_ACTION_KEY);
+  } catch {
+    // ignore
+  }
+  if (pendingInlineActionTimer) {
+    clearTimeout(pendingInlineActionTimer);
+    pendingInlineActionTimer = null;
+  }
+}
+
+function resumePendingInlineAction() {
+  const pending = getPendingInlineAction();
+  if (!pending) return;
+  const { actionType, tweetId, targetUrl, createdAt } = pending;
+  if (!actionType || !tweetId || !targetUrl) {
+    clearPendingInlineAction();
+    return;
+  }
+  if (createdAt && (Date.now() - createdAt) > 15000) {
+    clearPendingInlineAction();
+    return;
+  }
+
+  const maxWait = 6000;
+  const interval = 200;
+  const start = Date.now();
+  const targetForResume = alignUrlToCurrentOrigin(targetUrl);
+
+  const attempt = () => {
+    if (triggerInlineTweetAction(actionType, tweetId, targetForResume)) {
+      clearPendingInlineAction();
+      return true;
+    }
+    return false;
+  };
+
+  const tick = () => {
+    if (attempt()) return;
+    if (Date.now() - start >= maxWait) {
+      clearPendingInlineAction();
+      return;
+    }
+    pendingInlineActionTimer = setTimeout(tick, interval);
+  };
+
+  if (pendingInlineActionTimer) {
+    clearTimeout(pendingInlineActionTimer);
+    pendingInlineActionTimer = null;
+  }
+  pendingInlineActionTimer = setTimeout(tick, 400);
 }
 
 function positionExternalTooltip(rowRect) {
@@ -1180,6 +1277,7 @@ function showExternalTooltip(payload) {
   const preview = tweet.preview || null;
   const tweetId = tweet.id;
   const tweetUrl = buildTweetPermalink(tweet.url, tweetId);
+  const localTweetUrl = alignUrlToCurrentOrigin(tweetUrl);
   let previewHtml = '';
   if (preview && preview.url) {
     const escapedUrl = escapeHtmlInline(preview.url);
@@ -1234,7 +1332,7 @@ function showExternalTooltip(payload) {
   ].map(def => ({
     ...def,
     count: formatStatValue(stats[def.statKey]),
-    targetUrl: tweetUrl || null
+    targetUrl: localTweetUrl || null
   }));
 
   const metricsHtml = `
@@ -1268,7 +1366,7 @@ function showExternalTooltip(payload) {
   externalTooltipTextExpanded = false;
   el.style.display = 'block';
   applyExternalTooltipTextCollapse();
-  wireExternalTooltipActions(tweetId || null, tweetUrl || '');
+  wireExternalTooltipActions(tweetId || null, localTweetUrl || '');
   lastTooltipRowRect = payload.rowRect || null;
 
   requestAnimationFrame(() => {
@@ -1313,3 +1411,5 @@ window.addEventListener('message', (event) => {
     }
   }
 });
+
+resumePendingInlineAction();
