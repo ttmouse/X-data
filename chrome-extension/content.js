@@ -26,29 +26,23 @@ const PENDING_INLINE_ACTION_KEY = 'x_data_pending_inline_action';
 const SCRAPE_SCENARIOS = {
   analytics_auto: {
     id: 'analytics_auto',
-    label: '内容分析列表',
+    label: 'My Posts',
     targetUrl: ANALYTICS_PAGE_URL,
     matchPathPrefixes: ['/i/account_analytics/content'],
     autoScrollAllowed: true
   },
   bookmarks_auto: {
     id: 'bookmarks_auto',
-    label: '我的收藏',
+    label: 'Bookmarks',
     targetUrl: 'https://x.com/i/bookmarks',
     matchPathPrefixes: ['/i/bookmarks'],
     autoScrollAllowed: true
   },
   current_auto: {
     id: 'current_auto',
-    label: '当前页面（自动滚动）',
+    label: 'Current Page',
     useCurrentLocation: true,
     autoScrollAllowed: true
-  },
-  current_single: {
-    id: 'current_single',
-    label: '当前页面（第一屏）',
-    useCurrentLocation: true,
-    autoScrollAllowed: false
   }
 };
 const SCENARIO_ALIAS_MAP = {
@@ -953,6 +947,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.data && Array.isArray(request.data)) {
       const scenarioId = normalizeScenarioId(request.scenarioId || activeCacheScenarioId);
       switchScenarioCache(scenarioId);
+
+      // Handle clearing cache (empty array)
+      if (request.data.length === 0) {
+        console.log(`X Data Scraper: Clearing all tweets for scenario ${scenarioId}`);
+        allTweetsMap.clear();
+        saveCache();
+        sendResponse({ success: true, scenarioId, count: 0, cleared: true });
+        return;
+      }
+
+      // Handle normal cache update
       console.log(`X Data Scraper: Updating cache with ${request.data.length} tweets from VxTwitter sync`);
       request.data.forEach(tweet => {
         if (tweet.id) {

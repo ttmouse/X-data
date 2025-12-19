@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const storageLastUpdateSpan = document.getElementById('storageLastUpdate');
     const refreshStorageBtn = document.getElementById('refreshStorageBtn');
     const clearStorageBtn = document.getElementById('clearStorageBtn');
+    const scenarioStorageList = document.getElementById('scenarioStorageList');
 
     const isEmbedded = window.parent !== window;
 
@@ -69,32 +70,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const SCRAPE_SCENARIOS = [
         {
             id: 'analytics_auto',
-            label: '内容分析列表',
-            statusLabel: '内容分析列表（自动滚动）',
-            hint: '自动跳转到 https://x.com/i/account_analytics/content 并滚动抓取最近 90 天的数据。',
+            label: 'My Posts',
+            statusLabel: 'My Posts',
+            hint: 'Navigate to your posts page and scrape your recent 90 days tweets with auto-scroll.',
             autoScrollSupported: true
         },
         {
             id: 'bookmarks_auto',
-            label: '收藏夹',
-            statusLabel: '收藏夹（自动滚动）',
-            hint: '自动跳转到 https://x.com/i/bookmarks 并持续滚动抓取你保存的推文。',
+            label: 'Bookmarks',
+            statusLabel: 'Bookmarks',
+            hint: 'Navigate to bookmarks page and auto-scroll through saved tweets.',
             autoScrollSupported: true
         },
         {
             id: 'current_auto',
-            label: '当前页面（自动滚动）',
-            statusLabel: '当前页面（自动滚动）',
-            hint: '停留在当前打开的页面（包括搜索、列表、标签等）并自动滚动抓取更多内容。',
+            label: 'Current Page',
+            statusLabel: 'Current Page',
+            hint: 'Stay on current page (including search, lists, tags) and auto-scroll for more content.',
             autoScrollSupported: true
-        },
-        {
-            id: 'current_single',
-            label: '当前页面（第一屏）',
-            statusLabel: '当前页面（第一屏）',
-            hint: '留在当前页面，只抓取第一屏可见内容，不触发自动滚动。',
-            autoScrollSupported: false,
-            autoScrollNote: '该模式仅抓取当前屏幕显示的内容，自动滚动按钮已禁用。'
         }
     ];
     const SCENARIO_ALIAS_MAP = {
@@ -238,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function persistScenarioDataStore() {
         const payload = {};
         Object.entries(scenarioDataStore).forEach(([scenarioId, tweets]) => {
-            if (Array.isArray(tweets) && tweets.length > 0) {
+            if (Array.isArray(tweets)) {
                 payload[scenarioId] = tweets;
             }
         });
@@ -256,6 +249,57 @@ document.addEventListener('DOMContentLoaded', () => {
                 countEl.textContent = getScenarioData(scenarioId).length.toLocaleString();
             }
         });
+    }
+
+    function updateScenarioStorageList() {
+        if (!scenarioStorageList) return;
+        scenarioStorageList.innerHTML = '';
+        SCRAPE_SCENARIOS.forEach(scenario => {
+            const data = getScenarioData(scenario.id);
+            const count = data.length;
+            const item = document.createElement('div');
+            item.className = 'scenario-storage-item';
+
+            const info = document.createElement('div');
+            info.className = 'scenario-storage-info';
+            info.innerHTML = `
+                <div class="scenario-storage-title">${scenario.label}</div>
+                <div class="scenario-storage-meta">${count.toLocaleString()} items</div>
+            `;
+
+            const controls = document.createElement('div');
+            controls.className = 'scenario-storage-controls';
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'scenario-clear-btn';
+            clearBtn.type = 'button';
+            clearBtn.textContent = 'Clear';
+            clearBtn.disabled = count === 0;
+            clearBtn.addEventListener('click', (e) => {
+                console.log('Clear button clicked for scenario:', scenario.id);
+                handleScenarioClear(scenario.id, count);
+            });
+            controls.appendChild(clearBtn);
+
+            item.appendChild(info);
+            item.appendChild(controls);
+            scenarioStorageList.appendChild(item);
+        });
+    }
+
+    function handleScenarioClear(scenarioId, count) {
+        console.log('handleScenarioClear called with:', scenarioId, count);
+        if (count === 0) {
+            console.log('Count is 0, returning early');
+            return;
+        }
+        const scenario = getScenarioById(scenarioId);
+        if (!confirm(`Are you sure you want to clear the cache for "${scenario.label}"?`)) return;
+        console.log('Confirmed, clearing scenario:', scenario.id);
+        setScenarioData(scenario.id, []);
+        updateScenarioStorageList();
+        updateStorageUI();
+        showToast(`Cleared ${scenario.label} cache`, 'success', 2000);
+        sendMessageToActiveTab({ action: "update_cache", scenarioId: scenario.id, data: [] });
     }
 
     function renderDataScenarioTabs() {
@@ -285,6 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
             persistScenarioDataStore();
         }
         updateDataScenarioTabsState();
+        updateScenarioStorageList();
         if (refreshView && resolved === activeDataScenarioId) {
             applyCurrentDataFromScenario();
         }
@@ -359,6 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeDataScenarioId = firstScenarioWithData;
             }
             updateDataScenarioTabsState();
+            updateScenarioStorageList();
             applyCurrentDataFromScenario();
             refreshConsoleStatsForScenario();
             const hasAnyData = Object.values(scenarioDataStore).some(items => Array.isArray(items) && items.length > 0);
@@ -1508,6 +1554,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 chrome.storage.local.clear(() => {
                     Object.keys(scenarioDataStore).forEach(key => delete scenarioDataStore[key]);
                     updateDataScenarioTabsState();
+                    updateScenarioStorageList();
                     applyCurrentDataFromScenario();
                     refreshConsoleStatsForScenario();
                     updateStorageUI();

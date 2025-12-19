@@ -1302,6 +1302,82 @@ tr:hover {
   gap: 16px;
 }
 
+.scenario-storage {
+  position: relative;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.scenario-storage-header h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.scenario-storage-header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.scenario-storage-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scenario-storage-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.scenario-storage-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.scenario-storage-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.scenario-storage-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.scenario-storage-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.scenario-clear-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-main);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.scenario-clear-btn:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.scenario-clear-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .stat-item {
   padding: 20px;
   display: flex;
