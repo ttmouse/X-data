@@ -857,10 +857,25 @@ function getScenarioConfig(scenarioId) {
 
 function scenarioMatchesCurrentLocation(scenario) {
   if (!scenario || scenario.useCurrentLocation) return true;
-  const currentPath = window.location.pathname + window.location.search;
+
+  // If matchPathPrefixes is defined, check path prefix match
   if (Array.isArray(scenario.matchPathPrefixes) && scenario.matchPathPrefixes.length > 0) {
-    return scenario.matchPathPrefixes.some(prefix => currentPath.startsWith(prefix));
+    const currentPath = window.location.pathname;
+    const pathMatches = scenario.matchPathPrefixes.some(prefix => currentPath.startsWith(prefix));
+
+    // If path doesn't match, definitely not on the right page
+    if (!pathMatches) return false;
+
+    // If path matches but targetUrl is provided, compare full URLs (including query params)
+    if (scenario.targetUrl) {
+      return normalizeUrlForComparison(window.location.href) === normalizeUrlForComparison(scenario.targetUrl);
+    }
+
+    // Path matches and no specific targetUrl, consider it a match
+    return true;
   }
+
+  // Fallback to full URL comparison
   if (!scenario.targetUrl) return true;
   return normalizeUrlForComparison(window.location.href) === normalizeUrlForComparison(scenario.targetUrl);
 }

@@ -390,6 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
             id: 'bookmarks_auto',
             label: 'Bookmarks',
             statusLabel: 'Bookmarks',
+            getTargetUrl: () => 'https://x.com/i/bookmarks',
             hint: 'Navigate to bookmarks page and auto-scroll through saved tweets.',
             autoScrollSupported: true
         },
@@ -615,6 +616,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
+
+        // Update data panel scrape button
+        if (scrapeBtn) {
+            const isScrapingActiveScenario = autoScrollRunning && autoScrollScenarioId === activeDataScenarioId;
+
+            if (isScrapingActiveScenario) {
+                scrapeBtn.classList.add('scraping');
+                scrapeBtn.title = 'Stop scraping';
+            } else {
+                scrapeBtn.classList.remove('scraping');
+                scrapeBtn.title = 'Start scraping for current scenario';
+            }
+        }
     }
 
     function computeImageCount(data = []) {
@@ -2279,6 +2293,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateUI(request.data, request.scenarioId || activeDataScenarioId);
             }
             setStatus('Auto-scroll finished.', 'success', true); // Auto-clear after 3s
+        }
+    });
+
+    scrapeBtn.addEventListener('click', () => {
+        if (autoScrollRunning && autoScrollScenarioId === activeDataScenarioId) {
+            // Stop scraping if currently scraping this scenario
+            requestStopAutoScroll();
+        } else {
+            // Start scraping
+            handleScenarioAutoScroll(activeDataScenarioId);
         }
     });
 

@@ -767,6 +767,17 @@ body {
   cursor: not-allowed;
 }
 
+.icon-btn.scraping {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+}
+
+.icon-btn.scraping:hover {
+  background: #c0392b;
+  border-color: #c0392b;
+}
+
 .icon-btn i {
   font-size: 18px;
   line-height: 1;
