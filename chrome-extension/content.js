@@ -1098,7 +1098,7 @@ const EXTERNAL_ACTION_ICONS = {
   open: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M7 19V11"/><path d="M12 19V5"/><path d="M17 19v-7"/></svg>'
 };
 const TOOLTIP_TEXT_COLLAPSED_HEIGHT = 120;
-const TOOLTIP_PREVIEW_MAX_HEIGHT = 500;
+const TOOLTIP_PREVIEW_MAX_HEIGHT = 372;
 const INLINE_ACTION_TEST_IDS = {
   reply: 'reply',
   retweet: 'retweet',
@@ -1128,7 +1128,7 @@ function ensureExternalTooltip() {
   externalTooltipEl.id = 'x-data-scraper-external-tooltip';
   externalTooltipEl.style.cssText = `
     position: fixed;
-    width: 528px;
+    width: 400px;
     max-width: 720px;
     background: #111217;
     color: #f7f9f9;
