@@ -98,6 +98,12 @@
 
 ### 步骤 4：填写商店列表信息
 
+**权限理由（Justification for permissions）**：
+在提交审核时，如果请求了敏感权限（如 `clipboardWrite`），需要提供使用理由。
+- **clipboardWrite**:
+  - **English**: "The extension requires the 'clipboardWrite' permission to allow users to copy tweet links directly to their clipboard. This feature is available in two contexts: 1) A 'Copy Link' button on the floating tooltip for individual tweets, and 2) A 'Copy Links' action in the sidebar to batch copy URLs of all scraped tweets for easy sharing or external use."
+  - **中文**: "扩展程序请求 'clipboardWrite' 权限是为了允许用户将推文链接直接复制到剪贴板。该功能主要用于：1. 在单条推文的悬浮详情卡片中提供'复制链接'按钮；2. 在侧边栏中提供批量'复制链接'功能，方便用户导出抓取到的推文 URL。"
+
 **基本信息**：
 - **名称**：X Data Scraper（或你选择的名称）
 - **描述**：简洁明了地描述扩展程序的功能

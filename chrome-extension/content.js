@@ -309,18 +309,32 @@ function simulateTweetLinkClick(link) {
 
 function findTweetArticleElement(tweetId, targetUrl) {
   const link = findInPageTweetLink(tweetId, targetUrl);
-  if (!link) return null;
-  if (typeof link.closest === 'function') {
-    const article = link.closest('article');
-    if (article) return article;
-  }
-  let current = link.parentElement;
-  while (current && current !== document.body) {
-    if (current.tagName && current.tagName.toLowerCase() === 'article') {
-      return current;
+  if (link) {
+    if (typeof link.closest === 'function') {
+      const article = link.closest('article');
+      if (article) return article;
     }
-    current = current.parentElement;
+    let current = link.parentElement;
+    while (current && current !== document.body) {
+      if (current.tagName && current.tagName.toLowerCase() === 'article') {
+        return current;
+      }
+      current = current.parentElement;
+    }
   }
+
+  // Fallback for detail page: if we are on the page of the tweet, look for the focused article
+  if (tweetId && window.location.href.includes(tweetId)) {
+    // Try to find article with tabindex="-1" (often the main tweet)
+    const focusedArticle = document.querySelector('article[tabindex="-1"]');
+    if (focusedArticle) return focusedArticle;
+    
+    // Or simply the first article in the main column (which is usually the tweet)
+    // Note: This is a bit heuristic, but if we navigated here for this tweet, it's a safe bet.
+    const firstArticle = document.querySelector('article');
+    if (firstArticle) return firstArticle;
+  }
+
   return null;
 }
 
@@ -804,7 +818,13 @@ async function autoScrollLoop(targetScenarioId = activeCacheScenarioId) {
       action: "update_count",
       scenarioId,
       count: allTweetsMap.size
-    }).catch(() => {});
+    }).catch((err) => {
+      // 只在非预期错误时记录
+      if (!err.message.includes('Could not establish connection') &&
+          !err.message.includes('Receiving end does not exist')) {
+        console.error('[Extension] Unexpected message error:', err);
+      }
+    });
 
     // On first iteration, don't scroll yet - just scrape what's visible
     // This gives users immediate feedback and allows them to see initial results
@@ -1143,15 +1163,18 @@ const EXTERNAL_ACTION_ICONS = {
 const TOOLTIP_TEXT_COLLAPSED_HEIGHT = 120;
 const TOOLTIP_PREVIEW_MAX_HEIGHT = 372;
 const INLINE_ACTION_TEST_IDS = {
-  reply: 'reply',
-  retweet: 'retweet',
-  like: 'like'
+  reply: ['reply'],
+  retweet: ['retweet', 'unretweet'],
+  like: ['like', 'unlike']
 };
 const RETWEET_QUOTE_SELECTORS = [
   '[data-testid="retweetWithComment"]',
   '[data-testid="retweetWithCommentButton"]',
   '[data-testid="retweetWithCommentMenuItem"]',
-  '[data-testid="retweetWithCommentMenu"]'
+  '[data-testid="retweetWithCommentMenu"]',
+  // Fallbacks
+  '[role="menuitem"][href*="/retweet"]',
+  '[role="menuitem"] span'
 ];
 const RETWEET_QUOTE_KEYWORDS = [
   'quote',
@@ -1280,25 +1303,76 @@ function scheduleQuoteMenuSelection() {
   const maxWait = 2500;
   const interval = 120;
   const start = Date.now();
+  console.log('[QuoteMenu] Scheduled selection check');
   const poll = () => {
-    if (attemptQuoteMenuSelection()) return;
-    if (Date.now() - start >= maxWait) return;
+    if (attemptQuoteMenuSelection()) {
+        console.log('[QuoteMenu] Selection successful');
+        return;
+    }
+    if (Date.now() - start >= maxWait) {
+        console.warn('[QuoteMenu] Timed out waiting for menu');
+        return;
+    }
     setTimeout(poll, interval);
   };
   setTimeout(poll, 80);
 }
 
 function triggerInlineTweetAction(actionType, tweetId, targetUrl) {
-  const testId = INLINE_ACTION_TEST_IDS[actionType];
-  if (!testId) return false;
+  const testIds = INLINE_ACTION_TEST_IDS[actionType];
+  if (!testIds) return false;
+
   const article = findTweetArticleElement(tweetId, targetUrl);
-  if (!article) return false;
-  const button = article.querySelector(`[data-testid="${testId}"]`);
-  if (!button) return false;
+  if (!article) {
+    // Only warn if we are actually on the target page (avoid spamming logs during navigation)
+    if (window.location.href.includes(tweetId)) {
+      console.warn(`[InlineAction] Article not found for tweet ${tweetId}`);
+    }
+    return false;
+  }
+
+  let button = null;
+  // 1. Try test IDs
+  for (const testId of testIds) {
+    button = article.querySelector(`[data-testid="${testId}"]`);
+    if (button) break;
+  }
+
+  // 2. Try aria-label matching if not found
+  if (!button) {
+    const keywords = {
+      reply: ['Reply', '回复'],
+      retweet: ['Retweet', 'Repost', '转发'],
+      like: ['Like', '赞', '喜欢']
+    }[actionType] || [];
+    
+    if (keywords.length > 0) {
+      const candidates = article.querySelectorAll('button[aria-label]');
+      for (const candidate of candidates) {
+        const label = candidate.getAttribute('aria-label') || '';
+        if (keywords.some(k => label.includes(k))) {
+          button = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!button) {
+    if (window.location.href.includes(tweetId)) {
+       console.warn(`[InlineAction] Button not found for type ${actionType} in article`);
+    }
+    return false;
+  }
+
+  console.log(`[InlineAction] Triggering ${actionType} on tweet ${tweetId}`);
   const success = triggerDomClick(button);
+  
   if (success && actionType === 'retweet') {
+    console.log(`[InlineAction] Retweet clicked, scheduling quote menu selection`);
     scheduleQuoteMenuSelection();
   }
+  
   return success;
 }
 
@@ -1400,9 +1474,12 @@ function resumePendingInlineAction() {
     return;
   }
   if (createdAt && (Date.now() - createdAt) > 15000) {
+    console.warn('[ResumeAction] Expired pending action', pending);
     clearPendingInlineAction();
     return;
   }
+
+  console.log(`[ResumeAction] Resuming ${actionType} on ${tweetId} -> ${targetUrl}`);
 
   const maxWait = 6000;
   const interval = 200;
@@ -1411,6 +1488,7 @@ function resumePendingInlineAction() {
 
   const attempt = () => {
     if (triggerInlineTweetAction(actionType, tweetId, targetForResume)) {
+      console.log(`[ResumeAction] Successfully triggered ${actionType}`);
       clearPendingInlineAction();
       return true;
     }
@@ -1420,6 +1498,7 @@ function resumePendingInlineAction() {
   const tick = () => {
     if (attempt()) return;
     if (Date.now() - start >= maxWait) {
+      console.warn(`[ResumeAction] Timed out waiting for ${actionType}`);
       clearPendingInlineAction();
       return;
     }
@@ -1542,15 +1621,15 @@ function showExternalTooltip(payload) {
   `;
 
   el.innerHTML = `
-    <div style="position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:10;">
-      <button class="tooltip-icon-btn copy-link-btn" data-copy-url="${escapeHtmlInline(localTweetUrl || '')}" title="复制链接" style="background:rgba(0,0,0,0.5);border:none;color:#eff3f4;cursor:pointer;padding:5px;border-radius:6px;transition:all 0.2s;display:inline-flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);width:28px;height:28px;">
+    <div style="position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:100;">
+      <button class="tooltip-icon-btn copy-link-btn" data-copy-url="${escapeHtmlInline(localTweetUrl || '')}" title="复制链接" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.1);color:#eff3f4;cursor:pointer;padding:5px;border-radius:6px;transition:all 0.2s;display:inline-flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);width:28px;height:28px;">
         ${EXTERNAL_ACTION_ICONS.copyLink}
       </button>
-      <button class="tooltip-icon-btn delete-btn" data-tweet-id="${escapeHtmlInline(tweetId || '')}" data-scenario-id="${escapeHtmlInline(tooltipScenarioId)}" title="删除" style="background:rgba(0,0,0,0.5);border:none;color:#eff3f4;cursor:pointer;padding:6px;border-radius:6px;transition:all 0.2s;display:inline-flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);width:28px;height:28px;">
+      <button class="tooltip-icon-btn delete-btn" data-tweet-id="${escapeHtmlInline(tweetId || '')}" data-scenario-id="${escapeHtmlInline(tooltipScenarioId)}" title="删除" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.1);color:#eff3f4;cursor:pointer;padding:6px;border-radius:6px;transition:all 0.2s;display:inline-flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);width:28px;height:28px;">
         ${EXTERNAL_ACTION_ICONS.delete}
       </button>
     </div>
-    <div style="font-size:12px;color:#8b98a5;margin-bottom:8px;">${escapeHtmlInline(tweet.timestamp || '—')}</div>
+    <div style="font-size:12px;color:#8b98a5;margin-bottom:8px;padding-right:70px;">${escapeHtmlInline(tweet.timestamp || '—')}</div>
     ${previewHtml}
     <div style="margin-bottom:10px;">
       <div style="position:relative;">
@@ -1595,7 +1674,17 @@ function showExternalTooltip(payload) {
           copyBtn.style.background = 'rgba(0, 0, 0, 0.5)';
         }, 1500);
       }).catch(err => {
-        console.error('Failed to copy link:', err);
+        console.error('[Clipboard] Failed to copy link:', err);
+        // 显示错误反馈
+        const originalIcon = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+        copyBtn.style.color = '#f4212e';
+        copyBtn.style.background = 'rgba(244, 33, 46, 0.2)';
+        setTimeout(() => {
+          copyBtn.innerHTML = originalIcon;
+          copyBtn.style.color = '#eff3f4';
+          copyBtn.style.background = 'rgba(0, 0, 0, 0.5)';
+        }, 2000);
       });
     });
   }
@@ -1901,7 +1990,7 @@ function showQuickAddToast(scenarioLabel, isNew) {
   }
 
   const icon = isNew ? '✓' : '↻';
-  const message = isNew ? `已添加到 ${scenarioLabel}` : `已更新 ${scenarioLabel}`;
+  const message = isNew ? `已添加到 ${escapeHtmlInline(scenarioLabel)}` : `已更新 ${escapeHtmlInline(scenarioLabel)}`;
   toast.innerHTML = `<span style="font-size: 16px;">${icon}</span><span>${message}</span>`;
 
   // Show animation

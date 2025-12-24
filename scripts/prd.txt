@@ -1,0 +1,57 @@
+# Overview
+X Data Scraper is a powerful Chrome extension designed to scrape tweet data and media links from X/Twitter account analytics pages. It solves the problem of manually collecting analytics data by automating the process, providing a seamless experience for users who need to archive or analyze their social media performance.
+
+# Core Features
+1. **Data Scraping**: Automatically extract tweets, images, videos, and statistical metrics (likes, retweets, replies, views) from the X/Twitter analytics page.
+2. **Auto Scroll**: Supports automatic scrolling to incrementally scrape data without manual intervention.
+3. **Local Storage**: All scraped data is persisted in the browser's local storage to prevent data loss.
+4. **Sidebar Interface**: A responsive sidebar UI injected into the page for easy interaction and data viewing.
+5. **Data Filtering**: Filter scraped data by date, content type, and other criteria.
+6. **Statistics View**: Visualize engagement metrics for tweets.
+7. **Data Export**: Export collected data to JSON format (planned/implemented).
+
+# User Experience
+- **User Persona**: Social media managers, data analysts, and individual content creators who need to track their X/Twitter performance.
+- **User Flow**:
+  1. User navigates to `https://x.com/i/account_analytics`.
+  2. User clicks the extension icon.
+  3. A sidebar appears with options.
+  4. User selects "Start Auto Scroll" or "Scrape Current View".
+  5. Data populates in the sidebar list.
+  6. User can filter or export the data.
+
+# Technical Architecture
+- **Platform**: Google Chrome Extension (Manifest V3).
+- **Components**:
+  - `manifest.json`: Configuration.
+  - `background.js`: Service worker.
+  - `content.js`: Content script for DOM manipulation and scraping.
+  - `popup.html` / `popup.js`: Sidebar UI and logic.
+  - `style.css`: Styling.
+- **Data Storage**: `chrome.storage.local`.
+
+# Development Roadmap
+## Phase 1: MVP (Completed)
+- Basic scraping functionality.
+- Sidebar UI.
+- Auto-scroll mechanism.
+- Local storage.
+
+## Phase 2: Enhancements (Current)
+- Data export to JSON/CSV.
+- Advanced filtering.
+- Performance optimization for large datasets.
+- UI improvements.
+
+# Logical Dependency Chain
+1. **Foundation**: Manifest setup, basic content script injection.
+2. **Scraping Core**: Logic to parse tweet elements from DOM.
+3. **Storage**: Saving and retrieving data.
+4. **UI**: Sidebar implementation and connection to scraping logic.
+5. **Automation**: Auto-scroll feature.
+6. **Refinement**: Filtering, Export, and Error Handling.
+
+# Risks and Mitigations
+- **DOM Changes**: X/Twitter might change their DOM structure. *Mitigation*: Use flexible selectors and easy-to-update parsing logic.
+- **Rate Limiting**: Aggressive scrolling might trigger rate limits. *Mitigation*: Implement random delays and "human-like" scrolling behavior.
+- **Performance**: Large datasets might slow down the sidebar. *Mitigation*: Virtualize the list or implement pagination in the UI.
