@@ -653,6 +653,21 @@ function getStatValue(article, testId, iconName) {
   return 0;
 }
 
+function mergeStats(existing, newStats) {
+  const existingStats = existing?.stats || {};
+
+  // AIDEV-NOTE: If existing data has been synced via VxTwitter (has vxMeta),
+  // keep its precise stats instead of overwriting with potentially fuzzy scraped stats.
+  if (existing && existing.vxMeta) {
+    return existingStats;
+  }
+
+  return {
+    ...existingStats,
+    ...newStats
+  };
+}
+
 // AIDEV-NOTE: Incremental scraping strategy
 // All scraping operations (single scrape and auto-scroll) are INCREMENTAL:
 // - New tweets are added to allTweetsMap
@@ -744,7 +759,7 @@ function scrapeCurrentView() {
         ...existing,
         text: tweetData.text || existing.text || "",
         images: tweetData.images.length > 0 ? tweetData.images : (existing.images || []),
-        stats: tweetData.stats || existing.stats || {},
+        stats: mergeStats(existing, tweetData.stats),
         // AIDEV-NOTE: If existing data has been synced via VxTwitter (has vxMeta),
         // keep its precise timestamp instead of overwriting with potentially fuzzy scraped time.
         timestamp: (existing.vxMeta && existing.timestamp) ? existing.timestamp : (tweetData.timestamp || existing.timestamp || null),
@@ -1933,7 +1948,7 @@ function addTweetToCurrentScenario(tweetData, scenarioId) {
       ...existing,
       text: tweetData.text || existing.text || "",
       images: tweetData.images.length > 0 ? tweetData.images : (existing.images || []),
-      stats: tweetData.stats || existing.stats || {},
+      stats: mergeStats(existing, tweetData.stats),
       timestamp: tweetData.timestamp || existing.timestamp || null,
       url: tweetData.url || existing.url
     };
