@@ -8,6 +8,11 @@ let sidebarVisible = false;
 const SIDEBAR_WIDTH = 400;
 const SIDEBAR_ID = 'x-data-scraper-sidebar';
 const ANALYTICS_PAGE_URL = 'https://x.com/i/account_analytics/content?type=posts&sort=date&dir=desc&days=90';
+
+// Pages where sidebar should be hidden
+const HIDDEN_PAGE_PATTERNS = [
+  /^\/i\/grok/  // Grok AI chat page
+];
 const ROUTER_METHOD_NAMES = ['push', 'navigate', 'route', 'go', 'open', 'transitionTo', 'replace'];
 const ROUTER_PATH_CANDIDATES = [
   ['__NEXT_ROUTER__'],
@@ -56,6 +61,8 @@ const SCENARIO_CACHE_KEY = 'cached_tweets_by_scenario';
 const LEGACY_CACHE_KEY = 'cached_tweets';
 const scenarioTweetMaps = new Map();
 let activeCacheScenarioId = DEFAULT_SCENARIO_ID;
+// Active scenario synced from popup for Quick Add feature
+let activeScenarioFromPopup = null;
 
 function getScenarioTweetMap(scenarioId) {
   const normalized = normalizeScenarioId(scenarioId);
@@ -328,7 +335,7 @@ function findTweetArticleElement(tweetId, targetUrl) {
     // Try to find article with tabindex="-1" (often the main tweet)
     const focusedArticle = document.querySelector('article[tabindex="-1"]');
     if (focusedArticle) return focusedArticle;
-    
+
     // Or simply the first article in the main column (which is usually the tweet)
     // Note: This is a bit heuristic, but if we navigated here for this tweet, it's a safe bet.
     const firstArticle = document.querySelector('article');
@@ -838,7 +845,7 @@ async function autoScrollLoop(targetScenarioId = activeCacheScenarioId) {
     }).catch((err) => {
       // 只在非预期错误时记录
       if (!err.message.includes('Could not establish connection') &&
-          !err.message.includes('Receiving end does not exist')) {
+        !err.message.includes('Receiving end does not exist')) {
         console.error('[Extension] Unexpected message error:', err);
       }
     });
@@ -908,6 +915,8 @@ async function autoScrollLoop(targetScenarioId = activeCacheScenarioId) {
 function normalizeScenarioId(scenarioId) {
   if (!scenarioId) return DEFAULT_SCENARIO_ID;
   if (SCRAPE_SCENARIOS[scenarioId]) return scenarioId;
+  // Support custom dimension IDs (custom_*) - return as-is
+  if (scenarioId.startsWith('custom_')) return scenarioId;
   const alias = SCENARIO_ALIAS_MAP[scenarioId];
   if (alias && SCRAPE_SCENARIOS[alias]) return alias;
   return DEFAULT_SCENARIO_ID;
@@ -915,7 +924,19 @@ function normalizeScenarioId(scenarioId) {
 
 function getScenarioConfig(scenarioId) {
   const normalized = normalizeScenarioId(scenarioId);
-  return SCRAPE_SCENARIOS[normalized] || SCRAPE_SCENARIOS[DEFAULT_SCENARIO_ID];
+  if (SCRAPE_SCENARIOS[normalized]) {
+    return SCRAPE_SCENARIOS[normalized];
+  }
+  // Custom dimensions behave like current_auto (use current page, no navigation)
+  if (normalized.startsWith('custom_')) {
+    return {
+      id: normalized,
+      label: 'Custom',
+      useCurrentLocation: true,
+      autoScrollAllowed: true
+    };
+  }
+  return SCRAPE_SCENARIOS[DEFAULT_SCENARIO_ID];
 }
 
 function scenarioMatchesCurrentLocation(scenario) {
@@ -1015,7 +1036,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             action: "scroll_finished",
             scenarioId,
             data: data
-          }).catch(() => {});
+          }).catch(() => { });
         });
         sendResponse({ success: true, status: "started", scenarioId });
       });
@@ -1147,7 +1168,27 @@ function ensureSidebarVisible() {
   createSidebar();
 }
 
+function isPageHidden() {
+  const path = window.location.pathname;
+  return HIDDEN_PAGE_PATTERNS.some(pattern => pattern.test(path));
+}
+
+function hideSidebarIfNeeded() {
+  if (!isPageHidden()) return;
+  const sidebar = document.getElementById(SIDEBAR_ID);
+  if (sidebar) {
+    sidebar.style.display = 'none';
+    sidebarVisible = false;
+    adjustXLayout(false);
+    hideExternalTooltip();
+  }
+}
+
 function initSidebarAutoDisplay() {
+  if (isPageHidden()) {
+    console.log('X Data Scraper: Sidebar hidden on Grok page');
+    return;
+  }
   const init = () => {
     try {
       ensureSidebarVisible();
@@ -1163,6 +1204,20 @@ function initSidebarAutoDisplay() {
 }
 
 initSidebarAutoDisplay();
+
+let lastPathname = window.location.pathname;
+const pageObserver = new MutationObserver(() => {
+  const currentPath = window.location.pathname;
+  if (currentPath !== lastPathname) {
+    lastPathname = currentPath;
+    if (isPageHidden()) {
+      hideSidebarIfNeeded();
+    } else if (!sidebarVisible) {
+      ensureSidebarVisible();
+    }
+  }
+});
+pageObserver.observe(document.body, { childList: true, subtree: true });
 
 // Tooltip handling for embedded sidebar (to show outside iframe)
 let externalTooltipEl = null;
@@ -1323,12 +1378,12 @@ function scheduleQuoteMenuSelection() {
   console.log('[QuoteMenu] Scheduled selection check');
   const poll = () => {
     if (attemptQuoteMenuSelection()) {
-        console.log('[QuoteMenu] Selection successful');
-        return;
+      console.log('[QuoteMenu] Selection successful');
+      return;
     }
     if (Date.now() - start >= maxWait) {
-        console.warn('[QuoteMenu] Timed out waiting for menu');
-        return;
+      console.warn('[QuoteMenu] Timed out waiting for menu');
+      return;
     }
     setTimeout(poll, interval);
   };
@@ -1362,7 +1417,7 @@ function triggerInlineTweetAction(actionType, tweetId, targetUrl) {
       retweet: ['Retweet', 'Repost', '转发'],
       like: ['Like', '赞', '喜欢']
     }[actionType] || [];
-    
+
     if (keywords.length > 0) {
       const candidates = article.querySelectorAll('button[aria-label]');
       for (const candidate of candidates) {
@@ -1377,19 +1432,19 @@ function triggerInlineTweetAction(actionType, tweetId, targetUrl) {
 
   if (!button) {
     if (window.location.href.includes(tweetId)) {
-       console.warn(`[InlineAction] Button not found for type ${actionType} in article`);
+      console.warn(`[InlineAction] Button not found for type ${actionType} in article`);
     }
     return false;
   }
 
   console.log(`[InlineAction] Triggering ${actionType} on tweet ${tweetId}`);
   const success = triggerDomClick(button);
-  
+
   if (success && actionType === 'retweet') {
     console.log(`[InlineAction] Retweet clicked, scheduling quote menu selection`);
     scheduleQuoteMenuSelection();
   }
-  
+
   return success;
 }
 
@@ -1746,7 +1801,7 @@ function showExternalTooltip(payload) {
           action: "update_count",
           scenarioId: targetScenarioId,
           count: targetMap.size
-        }).catch(() => {});
+        }).catch(() => { });
 
         hideExternalTooltip();
       } else {
@@ -1757,7 +1812,7 @@ function showExternalTooltip(payload) {
           action: "update_count",
           scenarioId: targetScenarioId,
           count: targetMap.size
-        }).catch(() => {});
+        }).catch(() => { });
       }
     });
   }
@@ -1809,6 +1864,10 @@ window.addEventListener('message', (event) => {
     if (!navigateWithinPage(null, searchUrl)) {
       window.location.assign(searchUrl);
     }
+  } else if (action === 'set_active_scenario') {
+    // Sync active scenario from popup for Quick Add feature
+    activeScenarioFromPopup = payload.scenarioId || null;
+    console.log('[Content] Active scenario synced from popup:', activeScenarioFromPopup);
   }
 });
 
@@ -1971,7 +2030,7 @@ function addTweetToCurrentScenario(tweetData, scenarioId) {
     action: "update_count",
     scenarioId: scenarioId,
     count: targetMap.size
-  }).catch(() => {});
+  }).catch(() => { });
 
   return true;
 }
@@ -2106,10 +2165,10 @@ function injectQuickAddButton(article) {
       return;
     }
 
-    // 识别当前场景
-    const scenarioId = detectCurrentScenario();
-    console.log('[Quick Add] Detected scenario:', scenarioId);
-    const scenario = SCRAPE_SCENARIOS[scenarioId];
+    // 识别当前场景 - prefer popup's active scenario for Quick Add
+    const scenarioId = activeScenarioFromPopup || detectCurrentScenario();
+    console.log('[Quick Add] Using scenario:', scenarioId, activeScenarioFromPopup ? '(from popup)' : '(auto-detected)');
+    const scenario = getScenarioConfig(scenarioId);
     console.log('[Quick Add] Scenario config:', scenario);
 
     // 检查是否是新推文

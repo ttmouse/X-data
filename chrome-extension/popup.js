@@ -228,6 +228,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Storage keys
     const CUSTOM_SEARCHES_KEY = 'x_data_custom_searches';
+    const CUSTOM_DIMENSIONS_KEY = 'x_data_custom_dimensions';
+
+    // Custom dimensions state
+    let customDimensions = [];
+    let currentEditDimensionId = null;
+
+    // Dimension modal elements
+    const dimensionEditModal = document.getElementById('dimensionEditModal');
+    const dimensionModalTitle = document.getElementById('dimensionModalTitle');
+    const dimensionNameInput = document.getElementById('dimensionName');
+    const dimensionUrlInput = document.getElementById('dimensionUrl');
+    const dimensionModalCloseBtn = document.getElementById('dimensionModalCloseBtn');
+    const dimensionModalCancelBtn = document.getElementById('dimensionModalCancelBtn');
+    const dimensionModalSaveBtn = document.getElementById('dimensionModalSaveBtn');
+    const addDimensionBtn = document.getElementById('addDimensionBtn');
+    const customDimensionsList = document.getElementById('customDimensionsList');
 
     // Default preset search queries
     const DEFAULT_SEARCHES = [
@@ -267,6 +283,213 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.error('Failed to save custom searches:', err);
         }
+    }
+
+    // Custom dimensions functions
+    function loadCustomDimensions() {
+        try {
+            const stored = localStorage.getItem(CUSTOM_DIMENSIONS_KEY);
+            if (stored) {
+                customDimensions = JSON.parse(stored);
+            } else {
+                customDimensions = [];
+            }
+        } catch (err) {
+            console.error('Failed to load custom dimensions:', err);
+            customDimensions = [];
+        }
+    }
+
+    function saveCustomDimensions() {
+        try {
+            localStorage.setItem(CUSTOM_DIMENSIONS_KEY, JSON.stringify(customDimensions));
+        } catch (err) {
+            console.error('Failed to save custom dimensions:', err);
+        }
+    }
+
+    function openDimensionModal(mode = 'add', dimension = null) {
+        if (!dimensionEditModal) return;
+
+        currentEditDimensionId = dimension ? dimension.id : null;
+        dimensionModalTitle.textContent = mode === 'add' ? 'Add Dimension' : 'Edit Dimension';
+        dimensionNameInput.value = dimension ? dimension.label : '';
+        dimensionUrlInput.value = dimension ? (dimension.targetUrl || '') : '';
+        dimensionEditModal.classList.remove('hidden');
+        dimensionNameInput.focus();
+    }
+
+    function closeDimensionModal() {
+        if (!dimensionEditModal) return;
+        dimensionEditModal.classList.add('hidden');
+        dimensionNameInput.value = '';
+        dimensionUrlInput.value = '';
+        currentEditDimensionId = null;
+    }
+
+    function saveDimension() {
+        const name = dimensionNameInput.value.trim();
+        const url = dimensionUrlInput.value.trim();
+
+        if (!name) {
+            showToast('Name is required', 'error', 2000);
+            dimensionNameInput.focus();
+            return;
+        }
+
+        if (currentEditDimensionId) {
+            // Edit existing
+            const idx = customDimensions.findIndex(d => d.id === currentEditDimensionId);
+            if (idx >= 0) {
+                customDimensions[idx].label = name;
+                customDimensions[idx].targetUrl = url || null;
+                showToast('Dimension updated', 'success', 2000);
+            }
+        } else {
+            // Add new
+            const newDimension = {
+                id: 'custom_' + Date.now(),
+                label: name,
+                targetUrl: url || null,
+                autoScrollSupported: true
+            };
+            customDimensions.push(newDimension);
+            showToast('Dimension added', 'success', 2000);
+        }
+
+        saveCustomDimensions();
+        renderCustomDimensionCards();
+        renderDataScenarioTabs();
+        updateScenarioStorageList();
+        closeDimensionModal();
+    }
+
+    function deleteDimension(id) {
+        const dimension = customDimensions.find(d => d.id === id);
+        if (!dimension) return;
+
+        showConfirm(
+            `Delete "${dimension.label}" and all its data?`,
+            'Delete Dimension'
+        ).then(confirmed => {
+            if (confirmed) {
+                // Remove dimension
+                customDimensions = customDimensions.filter(d => d.id !== id);
+                saveCustomDimensions();
+
+                // Remove dimension data
+                delete scenarioDataStore[id];
+                persistScenarioDataStore();
+
+                // If this was the active data scenario, switch to first built-in
+                if (activeDataScenarioId === id) {
+                    setActiveDataScenario(SCRAPE_SCENARIOS[0].id);
+                }
+
+                renderCustomDimensionCards();
+                renderDataScenarioTabs();
+                updateScenarioStorageList();
+                showToast('Dimension deleted', 'success', 2000);
+            }
+        });
+    }
+
+    function renderCustomDimensionCards() {
+        if (!customDimensionsList) return;
+        customDimensionsList.innerHTML = '';
+
+        customDimensions.forEach(dimension => {
+            const data = getScenarioData(dimension.id);
+            const tweetCount = data.length;
+            const imgCount = computeImageCount(data);
+            const metaText = dimension.targetUrl
+                ? `${new URL(dimension.targetUrl).hostname} · Auto-scroll`
+                : 'Current Page · Auto-scroll';
+
+            const card = document.createElement('div');
+            card.className = 'scenario-item custom-dimension';
+            card.dataset.dimensionId = dimension.id;
+            card.innerHTML = `
+                <div class="scenario-info">
+                    <div class="scenario-title">${escapeHtml(dimension.label)}</div>
+                    <div class="scenario-subtitle">
+                        <span class="scenario-meta">${escapeHtml(metaText)}</span>
+                        <span class="scenario-data-count" data-scenario-id="${dimension.id}">
+                            Tweets: <b>${tweetCount}</b> · Images: <b>${imgCount}</b>
+                        </span>
+                    </div>
+                </div>
+                <div class="scenario-actions">
+                    <button type="button" class="icon-btn" data-action="scrape" title="Scrape">
+                        <i class="ri-download-cloud-line"></i>
+                    </button>
+                    <button type="button" class="icon-btn" data-action="clear" title="Clear">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
+                    <button type="button" class="icon-btn" data-action="edit" title="Edit">
+                        <i class="ri-edit-line"></i>
+                    </button>
+                    <button type="button" class="icon-btn" data-action="delete" title="Delete">
+                        <i class="ri-close-line"></i>
+                    </button>
+                </div>
+            `;
+
+            // Add event listeners for action buttons
+            card.querySelectorAll('.icon-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const action = btn.dataset.action;
+                    switch (action) {
+                        case 'scrape':
+                            handleScenarioAutoScroll(dimension.id);
+                            break;
+                        case 'clear':
+                            handleScenarioClear(dimension.id);
+                            break;
+                        case 'edit':
+                            openDimensionModal('edit', dimension);
+                            break;
+                        case 'delete':
+                            deleteDimension(dimension.id);
+                            break;
+                    }
+                });
+            });
+
+            customDimensionsList.appendChild(card);
+        });
+    }
+
+    // Dimension modal event listeners
+    if (addDimensionBtn) {
+        addDimensionBtn.addEventListener('click', () => openDimensionModal('add'));
+    }
+
+    if (dimensionModalCloseBtn) {
+        dimensionModalCloseBtn.addEventListener('click', closeDimensionModal);
+    }
+
+    if (dimensionModalCancelBtn) {
+        dimensionModalCancelBtn.addEventListener('click', closeDimensionModal);
+    }
+
+    if (dimensionModalSaveBtn) {
+        dimensionModalSaveBtn.addEventListener('click', saveDimension);
+    }
+
+    if (dimensionEditModal) {
+        dimensionEditModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeDimensionModal();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !dimensionEditModal.classList.contains('hidden')) {
+                closeDimensionModal();
+            }
+        });
     }
 
     // Parse variables in search query
@@ -728,13 +951,44 @@ document.addEventListener('DOMContentLoaded', () => {
     function resolveScenarioId(id) {
         if (!id) return SCRAPE_SCENARIOS[0].id;
         if (scenarioLookup[id]) return id;
+        // Check custom dimensions
+        const customDim = customDimensions.find(d => d.id === id);
+        if (customDim) return id;
         const alias = id && SCENARIO_ALIAS_MAP[id];
         if (alias && scenarioLookup[alias]) return alias;
         return SCRAPE_SCENARIOS[0].id;
     }
 
     function getScenarioById(id) {
-        return scenarioLookup[resolveScenarioId(id)] || SCRAPE_SCENARIOS[0];
+        const resolved = resolveScenarioId(id);
+        if (scenarioLookup[resolved]) return scenarioLookup[resolved];
+        // Check custom dimensions
+        const customDim = customDimensions.find(d => d.id === resolved);
+        if (customDim) {
+            return {
+                id: customDim.id,
+                label: customDim.label,
+                statusLabel: customDim.label,
+                getTargetUrl: customDim.targetUrl ? () => customDim.targetUrl : null,
+                hint: customDim.targetUrl
+                    ? `Navigate to ${customDim.targetUrl} and scrape tweets.`
+                    : 'Stay on current page and scrape tweets.',
+                autoScrollSupported: true
+            };
+        }
+        return SCRAPE_SCENARIOS[0];
+    }
+
+    function getAllScenarios() {
+        // Return built-in scenarios + custom dimensions as scenarios
+        const customScenarios = customDimensions.map(dim => ({
+            id: dim.id,
+            label: dim.label,
+            statusLabel: dim.label,
+            getTargetUrl: dim.targetUrl ? () => dim.targetUrl : null,
+            autoScrollSupported: true
+        }));
+        return [...SCRAPE_SCENARIOS, ...customScenarios];
     }
 
     function getActiveScenario() {
@@ -955,7 +1209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateScenarioStorageList() {
         if (!scenarioStorageList) return;
         scenarioStorageList.innerHTML = '';
-        SCRAPE_SCENARIOS.forEach(scenario => {
+        getAllScenarios().forEach(scenario => {
             const data = getScenarioData(scenario.id);
             const count = data.length;
             const item = document.createElement('div');
@@ -964,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const info = document.createElement('div');
             info.className = 'scenario-storage-info';
             info.innerHTML = `
-                <div class="scenario-storage-title">${scenario.label}</div>
+                <div class="scenario-storage-title">${escapeHtml(scenario.label)}</div>
                 <div class="scenario-storage-meta">${count.toLocaleString()} items</div>
             `;
 
@@ -1012,13 +1266,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderDataScenarioTabs() {
         if (!dataScenarioTabs) return;
         dataScenarioTabs.innerHTML = '';
-        SCRAPE_SCENARIOS.forEach(scenario => {
+        getAllScenarios().forEach(scenario => {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'data-scenario-tab';
             button.dataset.scenario = scenario.id;
             button.innerHTML = `
-                <span class="data-scenario-label">${scenario.label}</span>
+                <span class="data-scenario-label">${escapeHtml(scenario.label)}</span>
             `;
             button.addEventListener('click', () => {
                 setActiveDataScenario(scenario.id);
@@ -1344,7 +1598,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Panel Settings Logic ---
     const PANEL_SETTINGS_KEY = 'x_data_panel_settings';
-    
+
     // Default settings - all visible by default
     const DEFAULT_PANEL_SETTINGS = {
         searchKeywords: true,
@@ -1406,7 +1660,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function openPanelSettings() {
         const modal = document.getElementById('panelSettingsModal');
         if (!modal) return;
-        
+
         // Sync checkboxes with current settings before opening
         const checkboxes = modal.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(cb => {
@@ -1467,7 +1721,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (saveBtn) {
             saveBtn.addEventListener('click', savePanelSettingsFromModal);
         }
-        
+
         // Close on overlay click
         if (modal) {
             modal.addEventListener('click', (e) => {
@@ -1504,6 +1758,9 @@ document.addEventListener('DOMContentLoaded', () => {
         activeDataScenarioId = resolved;
         updateDataScenarioTabsState();
         applyCurrentDataFromScenario();
+
+        // Sync active scenario to content.js for Quick Add feature
+        postToParent('set_active_scenario', { scenarioId: resolved });
     }
 
     function applyCurrentDataFromScenario() {
@@ -2130,12 +2387,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    renderDataScenarioTabs();
+
+    // Load custom data first (before rendering tabs)
     loadCustomSearches();
+    loadCustomDimensions();
+
+    // Render UI
+    renderDataScenarioTabs();
+    renderCustomDimensionCards();
     renderSearchQueryList();
     initParameterPanel();
     initPanelSettings();
     bootstrapScenarioDataFromStorage();
+
+    // Sync initial active scenario to content.js for Quick Add
+    setTimeout(() => postToParent('set_active_scenario', { scenarioId: activeDataScenarioId }), 100);
 
     // Initialize time range selector
     const timeRangeButtons = document.querySelectorAll('.time-range-btn');
@@ -2207,24 +2473,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const url = copyBtn.dataset.url;
             if (!url) return;
 
-            // Copy to clipboard
             navigator.clipboard.writeText(url).then(() => {
-                // Visual feedback
                 const originalIcon = copyBtn.querySelector('i');
-                const originalText = copyBtn.querySelector('span').textContent;
+                const spanEl = copyBtn.querySelector('span');
+                const originalText = spanEl ? spanEl.textContent : '';
 
                 if (originalIcon) {
                     originalIcon.className = 'ri-check-line';
                 }
-                copyBtn.querySelector('span').textContent = 'Copied!';
+                if (spanEl) {
+                    spanEl.textContent = 'Copied!';
+                }
                 copyBtn.classList.add('success');
 
-                // Reset after delay
                 setTimeout(() => {
                     if (originalIcon) {
                         originalIcon.className = 'ri-links-line';
                     }
-                    copyBtn.querySelector('span').textContent = originalText;
+                    if (spanEl) {
+                        spanEl.textContent = originalText;
+                    }
                     copyBtn.classList.remove('success');
                 }, 1500);
             }).catch(err => {

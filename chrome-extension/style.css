@@ -434,6 +434,85 @@ body {
   color: white;
 }
 
+/* Custom Dimensions */
+.add-dimension-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-dimension-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(29, 155, 240, 0.05);
+}
+
+.add-dimension-btn i {
+  font-size: 16px;
+}
+
+.custom-dimensions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.custom-dimensions-list:empty {
+  display: none;
+}
+
+/* Custom dimension card compact actions */
+.custom-dimension .scenario-actions {
+  gap: 4px;
+}
+
+.custom-dimension .scenario-actions .icon-btn {
+  padding: 4px;
+  font-size: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 6px;
+}
+
+.custom-dimension .scenario-actions .icon-btn:hover {
+  background: var(--hover);
+  color: var(--text-main);
+}
+
+.custom-dimension .scenario-actions .icon-btn[data-action="delete"]:hover {
+  color: var(--danger);
+}
+
+.custom-dimension .scenario-actions .icon-btn[data-action="scrape"]:hover {
+  color: var(--success);
+}
+
+.custom-dimension .scenario-actions .icon-btn[data-action="clear"]:hover {
+  color: var(--danger);
+}
+
+/* Modal form labels */
+.form-group label .required {
+  color: var(--danger);
+}
+
+.form-group label .optional {
+  color: var(--text-dim);
+  font-weight: normal;
+  font-size: 12px;
+}
+
 .auto-scroll-note {
   font-size: 12px;
   color: var(--danger);
@@ -1902,12 +1981,14 @@ tr:hover {
 }
 
 /* Edit and Delete Buttons */
-.edit-btn, .delete-btn {
+.edit-btn,
+.delete-btn {
   padding: 6px 10px !important;
   min-width: auto !important;
 }
 
-.edit-btn i, .delete-btn i {
+.edit-btn i,
+.delete-btn i {
   font-size: 14px;
 }
 
@@ -2311,5 +2392,3 @@ tr:hover {
 .btn-primary:hover {
   background: #1a8cd8;
 }
-
-
