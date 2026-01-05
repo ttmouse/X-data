@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const panelSettingsCloseBtn = document.getElementById('panelSettingsCloseBtn');
     const panelSettingsCancelBtn = document.getElementById('panelSettingsCancelBtn');
     const panelSettingsSaveBtn = document.getElementById('panelSettingsSaveBtn');
+    const clearSearchParamsBtn = document.getElementById('clearSearchParamsBtn');
 
     // Current search parameters panel elements
     const currentSearchPanel = document.getElementById('currentSearchPanel');
@@ -1732,6 +1733,64 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         loadPanelSettings();
+        initClearSearchParamsBtn();
+    }
+
+    function clearAllSearchParams() {
+        currentSearchParams = {
+            label: '',
+            keywords: '',
+            language: '',
+            fromUser: '',
+            toUser: '',
+            mentionedUser: '',
+            list: '',
+            timeRange: '',
+            minLikes: 0,
+            contentTypes: [],
+            excludeTypes: [],
+            excludeWords: []
+        };
+
+        const searchKeywordsInput = document.getElementById('searchKeywordsInput');
+        const languageInput = document.getElementById('languageInput');
+        const fromUserInput = document.getElementById('fromUserInput');
+        const toUserInput = document.getElementById('toUserInput');
+        const mentionedUserInput = document.getElementById('mentionedUserInput');
+        const listInput = document.getElementById('listInput');
+        const excludeWordsInput = document.getElementById('excludeWordsInput');
+
+        if (searchKeywordsInput) searchKeywordsInput.value = '';
+        if (languageInput) languageInput.value = '';
+        if (fromUserInput) fromUserInput.value = '';
+        if (toUserInput) toUserInput.value = '';
+        if (mentionedUserInput) mentionedUserInput.value = '';
+        if (listInput) listInput.value = '';
+        if (excludeWordsInput) excludeWordsInput.value = '';
+
+        document.querySelectorAll('.param-btn[data-param="timeRange"]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.value === '');
+        });
+        document.querySelectorAll('.param-btn[data-param="minLikes"]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.value === '0');
+        });
+
+        document.querySelectorAll('.param-checkbox input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+        });
+
+        showToast('All parameters cleared', 'success', 2000);
+    }
+
+    function initClearSearchParamsBtn() {
+        const btn = document.getElementById('clearSearchParamsBtn');
+        if (btn) {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                clearAllSearchParams();
+            });
+        }
     }
 
     function setScenarioData(id, data, { persist = true, refreshView = true } = {}) {

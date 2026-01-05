@@ -2015,6 +2015,20 @@ tr:hover {
   margin: 0;
 }
 
+.panel-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#clearSearchParamsBtn {
+  color: var(--danger);
+}
+
+#clearSearchParamsBtn:hover {
+  background: rgba(244, 33, 46, 0.1);
+}
+
 .panel-body {
   display: flex;
   flex-direction: column;

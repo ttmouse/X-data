@@ -11,7 +11,9 @@ const ANALYTICS_PAGE_URL = 'https://x.com/i/account_analytics/content?type=posts
 
 // Pages where sidebar should be hidden
 const HIDDEN_PAGE_PATTERNS = [
-  /^\/i\/grok/  // Grok AI chat page
+  /^\/i\/grok/,
+  /\/status\/\d+\/photo\/\d+/,
+  /\/status\/\d+\/video\/\d+/
 ];
 const ROUTER_METHOD_NAMES = ['push', 'navigate', 'route', 'go', 'open', 'transitionTo', 'replace'];
 const ROUTER_PATH_CANDIDATES = [

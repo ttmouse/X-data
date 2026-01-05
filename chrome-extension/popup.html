@@ -270,9 +270,14 @@
       <div id="currentSearchPanel" class="current-search-panel">
         <div class="panel-header">
           <h4>Current Search Parameters</h4>
-          <button id="panelSettingsBtn" class="icon-btn" title="Panel Settings" aria-label="Panel Settings">
-            <i class="ri-settings-3-line" aria-hidden="true"></i>
-          </button>
+          <div class="panel-header-actions">
+            <button id="clearSearchParamsBtn" class="icon-btn" title="Clear All Parameters" aria-label="Clear All Parameters">
+              <i class="ri-delete-bin-line" aria-hidden="true"></i>
+            </button>
+            <button id="panelSettingsBtn" class="icon-btn" title="Panel Settings" aria-label="Panel Settings">
+              <i class="ri-settings-3-line" aria-hidden="true"></i>
+            </button>
+          </div>
         </div>
         <div class="panel-body">
           <div class="param-group" data-field="searchKeywords">
