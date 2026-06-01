@@ -1,148 +1,133 @@
 # X Data Scraper
 
-一个强大的 Chrome 扩展程序，用于从 X/Twitter 账户分析页面抓取推文数据和媒体链接。
+X Data Scraper is a local-first Chrome extension for collecting, organizing, searching, and exporting posts from X/Twitter.
 
-## 功能特点
-多场景数据抓取：不仅支持账户分析页面，还支持书签、搜索结果、列表及任意当前页面的推文抓取。
-高级搜索构建器：内置可视化的高级搜索面板，轻松构建复杂的查询条件（关键词、用户、时间范围、点赞数、内容类型等）并直接跳转搜索。
-快捷采集：在推文操作栏注入“快速添加”按钮，一键将当前推文保存到采集库。
-智能自动滚动：支持自动滚动页面并增量抓取，智能识别加载状态，无需手动干预。
-本地持久化存储：所有数据保存在本地浏览器存储中，支持按场景隔离管理和持久化。
-沉浸式侧边栏：优雅的侧边栏界面，无需离开当前页面即可查看、搜索和管理数据。
-数据管理与导出：支持数据筛选、全文搜索，可导出为 JSON、PDF 格式或一键复制所有链接。
-增强交互：提供悬浮详情卡片，支持直接在侧边栏对推文进行点赞、转发、评论等操作。
-多语言支持：界面完全支持中文和英文。
+It is designed for researchers, product managers, creators, AI builders, and knowledge workers who need to turn scattered social content into structured datasets for research, content analysis, prompt engineering, and personal knowledge workflows.
 
-## 安装说明
+## Why this project matters
 
-### 开发者模式安装
+Modern AI workflows increasingly depend on high-quality context. Useful social content is often scattered across timelines, bookmarks, search results, lists, and account analytics pages. X Data Scraper helps users collect this information locally, preserve context, and export it for downstream analysis without relying on a centralized backend.
 
-1. 克隆或下载此项目到本地
-2. 打开 Chrome 浏览器，访问 `chrome://extensions/`
-3. 开启右上角的"开发者模式"开关
-4. 点击"加载已解压的扩展程序"
-5. 选择项目中的 `chrome-extension` 文件夹
-6. 扩展程序安装完成，可以在浏览器工具栏看到 X Data Scraper 图标
+The project explores a practical pattern for AI-era personal tools: small, transparent, local-first software that helps individuals build their own research and knowledge datasets.
 
-## 使用指南
+## Key features
 
-### 基本使用
+- Collect posts from X/Twitter timelines, search results, bookmarks, lists, account analytics pages, and the current page view
+- Auto-scroll pages and incrementally capture loaded posts
+- Add individual posts quickly from the post action area
+- Store collected data locally in the browser
+- Search, filter, and manage collected posts from a sidebar interface
+- Export collected data for research and AI-assisted analysis
+- Copy collected links for downstream workflows
+- Support Chinese and English interface usage
+- Built as a transparent open-source Chrome extension
 
-1. 打开 [X/Twitter 账户分析页面](https://x.com/i/account_analytics/content?type=posts&sort=date&dir=desc&days=90)
-2. 点击浏览器工具栏中的 X Data Scraper 图标
-3. 在打开的侧边栏中，你可以选择以下操作：
-   - **Scrape Current View**：抓取当前页面可见的所有推文
-   - **Start Auto Scroll**：开始自动滚动并抓取更多推文
-   - **Stop Scroll**：停止自动滚动
-   - **Clear Data**：清除所有缓存的数据
+## Typical use cases
 
-### 数据操作
+- Content research: collect examples, hooks, formats, and references from X/Twitter
+- Product research: save public posts related to users, markets, competitors, and trends
+- AI workflows: turn collected posts into structured input for summarization, tagging, clustering, and prompt engineering
+- Personal knowledge management: preserve useful social content before it disappears in the feed
+- Creator workflows: build a searchable reference library from public social content
 
-- 抓取完成后，所有数据将保存在本地存储中
-- 你可以通过侧边栏查看抓取的推文列表
-- 点击任何推文可以直接跳转到原始推文页面
-- 使用筛选器可以按特定条件筛选显示的推文
-- 支持导出数据为 JSON 格式
+## Installation
 
-## 技术架构
+### Install in Chrome developer mode
 
-### 文件结构
+1. Clone or download this repository.
+2. Open Chrome and go to `chrome://extensions/`.
+3. Enable **Developer mode**.
+4. Click **Load unpacked**.
+5. Select the `chrome-extension` folder in this repository.
+6. Pin **X Data Scraper** from the Chrome toolbar if needed.
 
-```
+## Usage
+
+1. Open a supported X/Twitter page, such as a timeline, search result, bookmark page, list, or account analytics page.
+2. Click the X Data Scraper extension icon.
+3. Use the sidebar actions:
+   - **Scrape Current View**: collect posts currently visible on the page
+   - **Start Auto Scroll**: keep scrolling and capture more posts incrementally
+   - **Stop Scroll**: stop the auto-scroll process
+   - **Clear Data**: clear locally cached data
+4. Review, search, filter, export, or copy the collected data from the sidebar.
+
+## Project structure
+
+```text
 chrome-extension/
-├── manifest.json      # 扩展程序配置文件
-├── background.js      # 后台服务工作者
-├── content.js         # 内容脚本，负责抓取数据
-├── popup.html         # 侧边栏 HTML 界面
-├── popup.js           # 侧边栏交互逻辑
-├── style.css          # 样式文件
-└── icons/             # 扩展程序图标
+├── manifest.json      # Chrome extension manifest
+├── background.js      # Background service worker
+├── content.js         # Content script for page extraction and interaction
+├── popup.html         # Sidebar interface
+├── popup.js           # Sidebar logic and data operations
+├── style.css          # Extension UI styles
+└── icons/             # Extension icons
     ├── icon-16.png
     ├── icon-32.png
     └── icon-128.png
 ```
 
-### 核心组件
+## Architecture
 
-- **Content Script** (`content.js`): 
-  - 负责从页面 DOM 中提取推文数据
-  - 处理页面导航和自动滚动
-  - 管理数据缓存和与后台的通信
+### Content script
 
-- **Popup Interface** (`popup.html` & `popup.js`):
-  - 提供用户界面
-  - 显示抓取的数据
-  - 处理用户交互和数据筛选
+`content.js` runs on supported X/Twitter pages. It identifies post elements in the page DOM, extracts available post metadata, handles incremental capture, and communicates with the extension UI.
 
-- **Data Storage**:
-  - 使用 Chrome 本地存储 API 持久化数据
-  - 支持增量抓取，避免重复数据
+### Sidebar interface
 
-### 数据抓取逻辑
+`popup.html` and `popup.js` provide the user interface for capture actions, data review, search, filtering, export, and link-copying workflows.
 
-扩展程序通过以下方式抓取数据：
+### Local storage
 
-1. 识别分析页面中的推文元素
-2. 提取推文 ID、文本、图片链接、统计数据等
-3. 解析时间戳和用户信息
-4. 标准化和存储数据格式
+The extension uses Chrome local storage for persistence. Data is stored in the user's browser and is not uploaded to a hosted backend by this project.
 
-## 开发指南
+## Data and privacy model
 
-### 环境设置
+X Data Scraper is local-first:
 
-1. 确保安装了最新版本的 Chrome 浏览器
-2. 使用文本编辑器修改源代码
-3. 在 `chrome://extensions/` 页面点击扩展程序的"刷新"按钮以应用更改
+- Collected data is stored in the user's browser storage.
+- The project does not run a hosted scraping service.
+- The project does not provide a centralized user database.
+- Users remain responsible for how they collect, process, export, and use data.
 
-### 调试技巧
+## Responsible use
 
-- 使用 Chrome 开发者工具调试内容脚本和弹出窗口
-- 查看控制台日志了解抓取过程中的问题
-- 使用断点调试复杂的数据处理逻辑
+This project is intended for lawful personal research, content organization, and knowledge management. Users are responsible for complying with the terms of service of the platforms they access and with applicable laws.
 
-### 贡献指南
+Do not use this project for spam, harassment, credential collection, privacy-invasive monitoring, or any activity that violates platform rules or applicable law.
 
-1. Fork 本项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
+## Roadmap
 
-## 常见问题
+- Improve structured export formats for AI-assisted analysis
+- Add clearer dataset schemas for downstream workflows
+- Improve duplicate detection and incremental update logic
+- Add better documentation for extension permissions
+- Add automated checks for packaging and release readiness
+- Improve contributor onboarding and issue templates
 
-### Q: 为什么扩展程序无法抓取数据？
-A: 确保你已登录 X/Twitter 账户，并且正在访问账户分析页面 (`https://x.com/i/account_analytics/content`)。
+## Contributing
 
-### Q: 抓取的数据保存在哪里？
-A: 数据保存在浏览器的本地存储中，不会上传到任何服务器。
+Contributions are welcome. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for how to propose changes, report issues, and submit pull requests.
 
-### Q: 可以导出抓取的数据吗？
-A: 当前版本支持在界面中查看数据，未来版本将添加数据导出功能。
+## Security
 
-## 版本历史
+If you discover a security issue or a privacy-sensitive bug, please see [SECURITY.md](SECURITY.md) before opening a public issue.
 
-### v1.1.0 (2025-12-24)
-- 版本更新发布
-- 优化项目结构用于商店发布
+## License
 
-### v1.0.0 (2023-12-01)
-- 初始版本发布
-- 基本的数据抓取功能
-- 侧边栏界面
-- 自动滚动功能
+This project is released under the MIT License. See [LICENSE](LICENSE) for details.
 
-## 许可证
+## Maintainer
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 联系方式
-
-如有问题或建议，请通过以下方式联系：
-
-- 提交 Issue: [GitHub Issues](https://github.com/yourusername/x-data-scraper/issues)
-- 邮箱: your.email@example.com
+Maintained by [ttmouse](https://github.com/ttmouse).
 
 ---
 
-**免责声明**: 本扩展程序仅用于个人学习和研究目的。请遵守 X/Twitter 的使用条款和 API 使用政策。
+## 中文简介
+
+X Data Scraper 是一个本地优先的 Chrome 扩展，用于从 X/Twitter 页面采集、整理、搜索和导出公开内容。
+
+它更适合研究者、产品经理、创作者、AI 工具使用者和知识工作者，把分散在时间线、搜索结果、书签、列表和账号分析页里的内容，整理成可继续分析和复用的数据集。
+
+项目的核心定位不是“批量爬虫服务”，而是一个透明、开源、本地存储的个人研究与知识整理工具。
