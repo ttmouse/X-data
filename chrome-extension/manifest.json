@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "X Data Scraper",
-    "version": "1.1",
-    "description": "Scrape tweets and media links from X/Twitter account analytics pages.",
+    "version": "1.2.0",
+    "description": "Collect, organize, and export X/Twitter posts for research, AI workflows, and personal knowledge management.",
     "permissions": [
         "activeTab",
         "scripting",
