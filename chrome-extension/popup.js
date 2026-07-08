@@ -770,6 +770,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'download':
                     handleDownloadJSON();
                     break;
+                case 'import':
+                    handleImportXquikJSON();
+                    break;
             }
         });
     }
@@ -863,10 +866,169 @@ document.addEventListener('DOMContentLoaded', () => {
         a.href = url;
         a.download = `x-data-${new Date().toISOString().split('T')[0]}.json`;
         a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function pickFirstValue(...values) {
+        for (const value of values) {
+            if (value !== undefined && value !== null && String(value).trim() !== '') {
+                return value;
+            }
+        }
+        return '';
+    }
+
+    function parseNumberMetric(value) {
+        if (value === undefined || value === null || value === '') return 0;
+        if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.round(value));
+        const normalized = String(value).replace(/,/g, '').trim();
+        const match = normalized.match(/^(\d+(?:\.\d+)?)([km])?$/i);
+        if (!match) return 0;
+        let parsed = Number(match[1]);
+        if (!Number.isFinite(parsed)) return 0;
+        const suffix = (match[2] || '').toLowerCase();
+        if (suffix === 'k') parsed *= 1000;
+        if (suffix === 'm') parsed *= 1000000;
+        return Math.max(0, Math.round(parsed));
+    }
+
+    function normalizeImportedUrl(row, id) {
+        const rawUrl = pickFirstValue(row.url, row.tweetUrl, row.tweet_url, row.permalink, row.link);
+        if (rawUrl) {
+            const url = String(rawUrl)
+                .trim()
+                .replace('https://twitter.com/', 'https://x.com/')
+                .replace('https://www.twitter.com/', 'https://x.com/')
+                .replace('https://www.x.com/', 'https://x.com/');
+            if (/^https:\/\/(x|twitter)\.com\/.+\/status\/\d+/i.test(url) || /^https:\/\/x\.com\/i\/web\/status\/\d+/i.test(url)) {
+                return url;
+            }
+        }
+        return id ? `https://x.com/i/web/status/${id}` : '';
+    }
+
+    function normalizeImportedAuthor(row) {
+        const author = row.author && typeof row.author === 'object' ? row.author : {};
+        const username = pickFirstValue(row.username, row.handle, row.screenName, row.screen_name, row.authorUsername, author.username, author.handle);
+        const displayName = pickFirstValue(row.displayName, row.name, row.authorName, author.name, author.displayName);
+        return {
+            username: String(username || '').replace(/^@/, '').trim(),
+            displayName: String(displayName || '').trim()
+        };
+    }
+
+    function normalizeXquikImportRow(row) {
+        if (!row || typeof row !== 'object') return null;
+        const rawId = pickFirstValue(row.id, row.tweetId, row.tweet_id, row.statusId, row.status_id);
+        const id = String(rawId || '').trim();
+        if (!/^\d{5,}$/.test(id)) return null;
+
+        const text = String(pickFirstValue(row.text, row.fullText, row.full_text, row.content, row.body) || '').trim();
+        const timestamp = String(pickFirstValue(row.timestamp, row.createdAt, row.created_at, row.time, row.date) || '').trim();
+        const author = normalizeImportedAuthor(row);
+        const images = Array.isArray(row.images)
+            ? row.images.filter(Boolean).map(String)
+            : [];
+        const media = Array.isArray(row.media)
+            ? row.media
+            : [];
+        const imageUrls = [
+            ...images,
+            ...media
+                .map(item => (item && typeof item === 'object' ? pickFirstValue(item.preview, item.url, item.media_url, item.mediaUrl) : item))
+                .filter(Boolean)
+                .map(String)
+        ];
+
+        return {
+            id,
+            url: normalizeImportedUrl(row, id),
+            text,
+            timestamp,
+            author: author.username,
+            authorName: author.displayName,
+            images: [...new Set(imageUrls)],
+            media,
+            stats: {
+                replies: parseNumberMetric(pickFirstValue(row.replies, row.replyCount, row.reply_count, row.stats?.replies)),
+                retweets: parseNumberMetric(pickFirstValue(row.retweets, row.retweetCount, row.retweet_count, row.reposts, row.stats?.retweets)),
+                likes: parseNumberMetric(pickFirstValue(row.likes, row.likeCount, row.like_count, row.stats?.likes)),
+                bookmarks: parseNumberMetric(pickFirstValue(row.bookmarks, row.bookmarkCount, row.bookmark_count, row.stats?.bookmarks)),
+                views: parseNumberMetric(pickFirstValue(row.views, row.viewCount, row.view_count, row.stats?.views))
+            },
+            importedFrom: 'xquik'
+        };
+    }
+
+    function extractImportRows(parsed) {
+        if (Array.isArray(parsed)) return parsed;
+        if (!parsed || typeof parsed !== 'object') return [];
+        if (pickFirstValue(parsed.id, parsed.tweetId, parsed.tweet_id, parsed.statusId, parsed.status_id)) {
+            return [parsed];
+        }
+        if (parsed.cached_tweets_by_scenario && typeof parsed.cached_tweets_by_scenario === 'object') {
+            return Object.values(parsed.cached_tweets_by_scenario).flat().filter(Boolean);
+        }
+        for (const key of ['tweets', 'posts', 'data', 'results', 'items']) {
+            if (Array.isArray(parsed[key])) return parsed[key];
+        }
+        return [];
+    }
+
+    function parseImportText(rawText) {
+        const trimmed = String(rawText || '').trim();
+        if (!trimmed) return [];
+        try {
+            return extractImportRows(JSON.parse(trimmed));
+        } catch (jsonError) {
+            const rows = trimmed
+                .split(/\r?\n/)
+                .map(line => line.trim())
+                .filter(Boolean)
+                .map(line => JSON.parse(line));
+            if (!rows.length) throw jsonError;
+            return rows;
+        }
+    }
+
+    function mergeImportedTweets(importedTweets) {
+        const currentTweets = getScenarioData(activeDataScenarioId);
+        const merged = new Map(currentTweets.map(tweet => [String(tweet.id), tweet]));
+        let added = 0;
+        importedTweets.forEach(tweet => {
+            if (!tweet || !tweet.id) return;
+            const key = String(tweet.id);
+            if (!merged.has(key)) added++;
+            merged.set(key, { ...merged.get(key), ...tweet });
+        });
+        const nextData = Array.from(merged.values());
+        setScenarioData(activeDataScenarioId, nextData);
+        sendMessageToActiveTab({ action: "update_cache", scenarioId: activeDataScenarioId, data: nextData });
+        return added;
+    }
+
+    function importXquikText(rawText) {
+        const importedTweets = parseImportText(rawText)
+            .map(normalizeXquikImportRow)
+            .filter(Boolean);
+        if (!importedTweets.length) {
+            throw new Error('No valid tweet rows found in the selected file.');
+        }
+        return {
+            total: importedTweets.length,
+            added: mergeImportedTweets(importedTweets)
+        };
+    }
+
+    function handleImportXquikJSON() {
+        if (!xquikImportInput) return;
+        xquikImportInput.value = '';
+        xquikImportInput.click();
     }
 
     const scrapeBtn = document.getElementById('scrapeBtn');
     const deleteBtn = document.getElementById('deleteBtn');
+    const xquikImportInput = document.getElementById('xquikImportInput');
     const autoScrollBtn = document.getElementById('autoScrollBtn');
     const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
     const iconMarkup = {
@@ -884,6 +1046,21 @@ document.addEventListener('DOMContentLoaded', () => {
         like: '<i class="ri-heart-3-line" aria-hidden="true"></i>',
         open: '<i class="ri-external-link-line" aria-hidden="true"></i>'
     };
+
+    if (xquikImportInput) {
+        xquikImportInput.addEventListener('change', async () => {
+            const file = xquikImportInput.files && xquikImportInput.files[0];
+            if (!file) return;
+            try {
+                const result = importXquikText(await file.text());
+                showToast(`Imported ${result.total} rows, ${result.added} new`, 'success', 3000);
+            } catch (error) {
+                showToast(error.message || 'Could not import the selected file', 'error', 3000);
+            } finally {
+                xquikImportInput.value = '';
+            }
+        });
+    }
 
     const SCRAPE_SCENARIOS = [
         {
