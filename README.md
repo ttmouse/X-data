@@ -52,6 +52,25 @@ The project explores a practical pattern for AI-era personal tools: small, trans
    - **Clear Data**: clear locally cached data
 4. Review, search, filter, export, or copy the collected data from the sidebar.
 
+### Import Xquik exports
+
+The data table can also merge reviewed Xquik JSON or JSONL exports into the
+currently selected scenario. Open **More actions**, choose **Import Xquik
+JSON**, and select an export file. The importer accepts arrays, JSONL rows, or
+objects that wrap rows in `tweets`, `posts`, `data`, `results`, or `items`.
+
+Imported rows are normalized into the existing local cache shape:
+
+- tweet IDs and X/Twitter URLs are validated before rows are accepted
+- `twitter.com` URLs are normalized to `x.com`
+- common metric fields such as likes, replies, reposts, bookmarks, and views are
+  converted into the table's `stats` object
+- duplicate tweet IDs update the existing cached row instead of creating a
+  second table entry
+
+This keeps imported Xquik research local to the browser and does not add any
+new extension permissions or hosted service calls.
+
 ## Project structure
 
 ```text
